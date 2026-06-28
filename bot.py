@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timedelta
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ChatMemberHandler, ContextTypes
 
@@ -10,15 +9,12 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Chat
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# الإعدادات المدمجة
+# الإعدادات
 TOKEN = "8849395576:AAFoHh3Y4vyf3K8lqs50Qxrm4flXbk1gUT0"
-OWNER_ID = 6799059686
 CHANNEL_USERNAME = "@uec_u"
-CHANNEL_ID = -1004304853750
-
 DATA_FILE = "groups.json"
 
-# الأذكار والبيانات
+# البيانات
 AZKAR = {
     "صباح": ["اللهم بك أصبحنا وبك أمسينا", "سبحان الله وبحمده", "اللهم إني أسألك العافية"],
     "مساء": ["اللهم بك أمسينا وبك أصبحنا", "بسم الله الذي لا يضر مع اسمه شيء", "أعوذ بكلمات الله التامات"],
@@ -34,8 +30,6 @@ GROUP_AZKAR = [
     "اللهم صل وسلم على نبينا محمد",
     "أستغفر الله العظيم وأتوب إليه"
 ]
-
-group_index = 0
 
 def load_groups():
     if os.path.exists(DATA_FILE):
@@ -68,22 +62,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if update.effective_chat.type != "private":
         return
-
     sub = await is_subscribed(context.bot, user.id)
     if not sub:
         await update.message.reply_text(f"يرجى الاشتراك في القناة أولاً: {CHANNEL_USERNAME}")
         return
-
     await update.message.reply_text("أهلاً بك في بوت الأذكار، اختر ذكراً:", reply_markup=azkar_menu())
 
 async def show_azkar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data.replace("zk_", "")
-    
     category_map = {"sabah": "صباح", "masaa": "مساء", "nawm": "نوم", "moaw": "معوذات", "mtnw": "متنوع"}
     items = AZKAR.get(category_map.get(data), [])
-    
     text = "\n\n".join(items)
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="back")]]))
 
@@ -94,18 +84,18 @@ async def on_bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chat.id not in groups:
             groups.append(chat.id)
             save_groups(groups)
-            await context.bot.send_message(chat.id, "تم تفعيل بوت الأذكار! سنرسل ذكراً كل ساعتين.")
+            await context.bot.send_message(chat.id, "تم تفعيل بوت الأذكار!")
 
-async def group_scheduler(bot: Bot):
-    global group_index
+async def group_scheduler(app):
+    group_index = 0
     while True:
-        await asyncio.sleep(7200) # ساعتين
+        await asyncio.sleep(7200)
         groups = load_groups()
         if groups:
             zikr = GROUP_AZKAR[group_index % len(GROUP_AZKAR)]
             group_index += 1
             for gid in groups:
-                try: await bot.send_message(gid, f"🕌 ذكر الصدقة الجارية:\n\n{zikr}")
+                try: await app.bot.send_message(gid, f"🕌 ذكر:\n\n{zikr}")
                 except: pass
 
 async def main():
@@ -114,9 +104,12 @@ async def main():
     app.add_handler(CallbackQueryHandler(show_azkar, pattern="^zk_"))
     app.add_handler(ChatMemberHandler(on_bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
     
-    asyncio.create_task(group_scheduler(app.bot))
+    # تشغيل البوت باستخدام Polling مع تحسين لـ Render
     print("🚀 البوت يعمل الآن...")
-    await app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await group_scheduler(app)
 
 if __name__ == "__main__":
     asyncio.run(main())
