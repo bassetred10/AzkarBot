@@ -13,6 +13,18 @@ class ContentCatalogueTests(unittest.TestCase):
             self.assertTrue(item["reference"])
             self.assertTrue(item["source_url"].startswith("https://"))
 
+
+    def test_daily_hadith_catalogue_has_multiple_source_linked_items(self):
+        catalogue = ContentCatalogue()
+        catalogue.load()
+        hadiths = catalogue.by_category("hadith")
+        self.assertGreaterEqual(len(hadiths), 5)
+        for item in hadiths:
+            self.assertTrue(item["narrator"])
+            self.assertTrue(item["source"])
+            self.assertTrue(item["reference"])
+            self.assertTrue(item["source_url"].startswith("https://"))
+
     def test_categories_match_items(self):
         catalogue = ContentCatalogue()
         catalogue.load()
