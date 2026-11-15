@@ -715,11 +715,13 @@ async def live_round_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     used_ids = json.loads(session["used_question_ids"] or "[]")
-    remaining = [item for item in games.questions if item["id"] not in used_ids]
-    if not remaining:
-        remaining = list(games.questions)
+    category_id = session.get("category_id") or "all"
+    next_question = games.random_question(
+        category_id=category_id,
+        exclude_ids=set(used_ids),
+    )
+    if next_question["id"] in used_ids:
         used_ids = []
-    next_question = random.choice(remaining)
     used_ids.append(next_question["id"])
     next_deadline = time.time() + LIVE_ROUND_SECONDS
     advanced = await store.advance_session(
@@ -828,9 +830,9 @@ async def poll_answer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not answer or not answer.user or not answer.option_ids:
         return
     store: LiveGameStore = context.application.bot_data["live_store"]
-    # Poll metadata keeps the expected answer server-side; only the option index is received.
+    # Custom modes may store their own answer index (for example, true/false).
     cursor = await store.conn.execute(
-        "SELECT question_id FROM channel_quiz_polls WHERE poll_id=?",
+        "SELECT question_id, answer_index FROM channel_quiz_polls WHERE poll_id=?",
         (answer.poll_id,),
     )
     row = await cursor.fetchone()
@@ -839,12 +841,15 @@ async def poll_answer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     question = _games(context).get(row["question_id"])
     if not question:
         return
+    expected = row["answer_index"]
+    if expected is None:
+        expected = question["answer"]
     await context.application.bot_data["db"].upsert_user(answer.user)
     await store.record_poll_answer(
         answer.poll_id,
         answer.user.id,
         answer.option_ids[0],
-        answer.option_ids[0] == question["answer"],
+        answer.option_ids[0] == int(expected),
     )
 
 
