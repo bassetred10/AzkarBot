@@ -8,8 +8,8 @@ An Arabic-first Islamic companion for Telegram with source-aware adhkar, persona
 - Source-aware adhkar and hadith catalogue. The reading interface shows source names and reference numbers without exposing raw URLs.
 - Private learning quiz with personal progress and a general leaderboard.
 - **Live group arena:** 1–10 timed rounds, a 25-second answer window per round, one answer per player per round, live participation counts, speed bonuses, answer explanations, and a final podium.
-- **Native quiz publishing:** Telegram quiz polls with a 90-second voting window. Non-anonymous poll answers can be attributed to users when Telegram supplies voter identity.
-- Group results are scoped to each group; poll results have a separate leaderboard and a combined live leaderboard.
+- **Native quiz publishing:** Telegram quiz polls with a 90-second voting window. Group polls are non-anonymous and produce named player scores. Channel polls are anonymous and provide aggregate vote/correct-answer statistics only.
+- Group results are scoped to each group; named group-poll scores feed the player leaderboard. Channel results remain anonymous and are shown as aggregate totals.
 - Live sessions and answers are stored in SQLite. Active round timers are restored after a normal service restart.
 - Admin-only destination management, message publishing, and quiz publishing.
 - Telegram Mini App shell, SQLite persistence, and Telegram Mini App initData verification.
@@ -23,9 +23,9 @@ An Arabic-first Islamic companion for Telegram with source-aware adhkar, persona
 5. Use /addtarget @channel to register a channel. Groups are registered automatically when the bot is added; /addtarget can also register them explicitly.
 6. Use /targets to review destinations and /deltarget CHAT_ID to remove one.
 7. To publish a post, send the content to the bot, then send /publish as a reply to that message.
-8. Use /channelquiz to publish a native timed quiz poll to registered channels.
-9. Use /publishlivequiz to publish a native timed quiz poll to every registered group and channel.
-10. Use /channelboard for native-poll scores and /liveboard for the combined live-game leaderboard.
+8. Use /channelquiz to publish an anonymous native timed quiz poll to registered channels. Use /channelboard for aggregate participation and correct-answer totals.
+9. Use /publishlivequiz to publish a native quiz poll to every registered group and channel: named scoring in groups, anonymous totals in channels.
+10. Use /channelboard for anonymous channel totals and /liveboard for named player scores from group competitions and group polls.
 11. Use /publishquiz for the older inline-keyboard question broadcast.
 
 ## User commands
@@ -36,9 +36,9 @@ An Arabic-first Islamic companion for Telegram with source-aware adhkar, persona
 - /livegame — start a five-round live competition in a group
 - /livegame 3 — start a competition with a chosen number of rounds (1–10)
 - /gameboard — leaderboard for the current group
-- /liveboard — combined leaderboard across live group games and native polls
+- /liveboard — leaderboard across group competitions and named group polls
 - /endgame — stop the active group competition (starter or group admins only)
-- /channelboard — native-poll leaderboard
+- /channelboard — anonymous channel poll statistics
 - /myid — show your Telegram numeric ID
 - /help — command guide
 
