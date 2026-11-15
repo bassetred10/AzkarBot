@@ -1,0 +1,24 @@
+import unittest
+
+from app.content import ContentCatalogue
+
+
+class ContentCatalogueTests(unittest.TestCase):
+    def test_seed_catalogue_has_source_fields(self):
+        catalogue = ContentCatalogue()
+        catalogue.load()
+        self.assertGreaterEqual(len(catalogue.items), 3)
+        for item in catalogue.items:
+            self.assertTrue(item["source"])
+            self.assertTrue(item["reference"])
+            self.assertTrue(item["source_url"].startswith("https://"))
+
+    def test_categories_match_items(self):
+        catalogue = ContentCatalogue()
+        catalogue.load()
+        category_ids = {category["id"] for category in catalogue.categories}
+        self.assertTrue(all(item["category"] in category_ids for item in catalogue.items))
+
+
+if __name__ == "__main__":
+    unittest.main()

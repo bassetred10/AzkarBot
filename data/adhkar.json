@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "language": "ar",
+  "categories": [
+    {"id": "morning", "title": "أذكار الصباح", "icon": "☀️"},
+    {"id": "evening", "title": "أذكار المساء", "icon": "🌙"},
+    {"id": "general", "title": "أذكار متنوعة", "icon": "📿"}
+  ],
+  "items": [
+    {
+      "id": "morning_001",
+      "category": "morning",
+      "title": "ذكر الصباح",
+      "text": "اللَّهُمَّ بِكَ أَصْبَحْنَا، وَبِكَ أَمْسَيْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ، وَإِلَيْكَ النُّشُورُ.",
+      "repeat": 1,
+      "narrator": "أبو هريرة رضي الله عنه",
+      "source": "سنن أبي داود",
+      "reference": "5068",
+      "grading": "صحيح — الألباني",
+      "source_url": "https://sunnah.com/abudawud/43/296",
+      "explanation": null,
+      "review_status": "source_checked"
+    },
+    {
+      "id": "evening_001",
+      "category": "evening",
+      "title": "ذكر المساء",
+      "text": "اللَّهُمَّ بِكَ أَمْسَيْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ، وَإِلَيْكَ النُّشُورُ.",
+      "repeat": 1,
+      "narrator": "أبو هريرة رضي الله عنه",
+      "source": "سنن أبي داود",
+      "reference": "5068",
+      "grading": "صحيح — الألباني",
+      "source_url": "https://sunnah.com/abudawud/43/296",
+      "explanation": null,
+      "review_status": "source_checked"
+    },
+    {
+      "id": "general_001",
+      "category": "general",
+      "title": "التسبيح",
+      "text": "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ.",
+      "repeat": 100,
+      "narrator": "أبو هريرة رضي الله عنه",
+      "source": "صحيح البخاري",
+      "reference": "6405",
+      "grading": "صحيح",
+      "source_url": "https://sunnah.com/bukhari/80/100",
+      "virtue": "ورد في الحديث أن من قالها مائة مرة في اليوم حُطَّت خطاياه وإن كانت مثل زبد البحر.",
+      "explanation": null,
+      "review_status": "source_checked"
+    },
+    {
+      "id": "general_002",
+      "category": "general",
+      "title": "الرضا بالله رباً",
+      "text": "رَضِيتُ بِاللَّهِ رَبًّا، وَبِالْإِسْلَامِ دِينًا، وَبِمُحَمَّدٍ نَبِيًّا.",
+      "repeat": 1,
+      "narrator": "أبو سعيد الخدري رضي الله عنه",
+      "source": "صحيح مسلم",
+      "reference": "1884",
+      "grading": "صحيح",
+      "source_url": "https://sunnah.global/hadeeth/ar/show/65906",
+      "explanation": null,
+      "review_status": "source_checked"
+    }
+  ]
+}

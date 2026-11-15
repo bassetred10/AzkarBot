@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101a18">
+  <title>أَثَر | ATHAR</title>
+  <link rel="stylesheet" href="/miniapp/styles.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand-mark">أَثَر</div>
+      <div class="brand-copy"><strong>رفيق الذكر</strong><span>ذكرٌ موثّق، وقلبٌ مطمئن</span></div>
+      <button class="icon-button" id="themeButton" aria-label="تبديل المظهر">◐</button>
+    </header>
+    <section class="hero">
+      <div class="eyebrow">مساحتك اليومية للذكر</div>
+      <h1>اجعل لسانك<br><span>رطباً بذكر الله</span></h1>
+      <p>أذكار وأدعية موثقة بمصادرها، في تجربة هادئة تجمع ما تحتاجه في مكان واحد.</p>
+      <div class="hero-meta"><span class="live-dot"></span> محتوى موثّق بالمراجع</div>
+    </section>
+    <section class="section-heading">
+      <div><span class="eyebrow">ابدأ من هنا</span><h2>الأقسام</h2></div>
+      <span class="section-note" id="itemCount">تحميل المحتوى…</span>
+    </section>
+    <nav class="category-grid" id="categories" aria-label="أقسام الأذكار"></nav>
+    <section class="section-heading">
+      <div><span class="eyebrow">وقفة قصيرة</span><h2>ذكر اليوم</h2></div>
+      <span class="section-note">من السنة</span>
+    </section>
+    <article class="daily-card">
+      <div class="card-topline"><span>📿</span><span class="source-pill">مرجع موثّق</span></div>
+      <p class="dhikr-text" id="dailyText">جاري تحميل الذكر…</p>
+      <div class="card-footer"><span id="dailySource"></span><button id="copyButton">نسخ الذكر</button></div>
+    </article>
+    <section class="trust-note">
+      <span class="trust-icon">✦</span>
+      <div><strong>الأمانة قبل الكثرة</strong><p>لا ننشر حديثاً بلا مرجع، ولا نعرض شرحاً آلياً على أنه فتوى أو كلام لأهل العلم.</p></div>
+    </section>
+    <footer>أَثَر · نفعٌ يبقى</footer>
+  </main>
+  <script src="/miniapp/app.js"></script>
+</body>
+</html>
