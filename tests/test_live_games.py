@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 
 from app.database import Database
-from app.live_games import LiveGameStore
+from app.live_games import LiveGameStore, register_live_game_handlers
 
 
 class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
@@ -57,6 +57,23 @@ class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
         )
         result = await self.store.record_answer("session001", 2, 101, 0, False)
         self.assertEqual(result, "closed")
+
+
+
+
+class LiveGameHandlerRegistrationTests(unittest.TestCase):
+    def test_live_handlers_register_without_missing_callbacks(self):
+        class FakeApplication:
+            def __init__(self):
+                self.handlers = []
+
+            def add_handler(self, handler, group=0):
+                self.handlers.append((handler, group))
+
+        application = FakeApplication()
+        register_live_game_handlers(application)
+        self.assertGreaterEqual(len(application.handlers), 10)
+        self.assertTrue(any(group == -1 for _, group in application.handlers))
 
 
 if __name__ == "__main__":
