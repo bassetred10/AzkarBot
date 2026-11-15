@@ -28,6 +28,7 @@ SCHEDULES = {
     "morning": ("morning_enabled", "morning_time", "☀️ ذكر الصباح", "07:00"),
     "evening": ("evening_enabled", "evening_time", "🌙 ذكر المساء", "18:00"),
     "quiz": ("quiz_enabled", "quiz_time", "🎯 سؤال اليوم", "20:00"),
+    "hadith": ("hadith_enabled", "hadith_time", "📜 حديث اليوم", "14:00"),
 }
 TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
@@ -51,16 +52,28 @@ class CommunityStore:
                 morning_enabled INTEGER NOT NULL DEFAULT 0,
                 evening_enabled INTEGER NOT NULL DEFAULT 0,
                 quiz_enabled INTEGER NOT NULL DEFAULT 0,
+                hadith_enabled INTEGER NOT NULL DEFAULT 0,
                 welcome_enabled INTEGER NOT NULL DEFAULT 1,
                 morning_time TEXT NOT NULL DEFAULT '07:00',
                 evening_time TEXT NOT NULL DEFAULT '18:00',
                 quiz_time TEXT NOT NULL DEFAULT '20:00',
+                hadith_time TEXT NOT NULL DEFAULT '14:00',
                 timezone TEXT NOT NULL DEFAULT 'Africa/Algiers',
                 updated_by INTEGER,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             """
         )
+        columns_cursor = await self.conn.execute("PRAGMA table_info(community_settings)")
+        columns = {row["name"] for row in await columns_cursor.fetchall()}
+        if "hadith_enabled" not in columns:
+            await self.conn.execute(
+                "ALTER TABLE community_settings ADD COLUMN hadith_enabled INTEGER NOT NULL DEFAULT 0"
+            )
+        if "hadith_time" not in columns:
+            await self.conn.execute(
+                "ALTER TABLE community_settings ADD COLUMN hadith_time TEXT NOT NULL DEFAULT '14:00'"
+            )
         await self.conn.commit()
 
     async def ensure_group(self, chat_id: int, title: str = "") -> None:
@@ -99,7 +112,7 @@ class CommunityStore:
         await self.conn.execute(
             """UPDATE community_settings
                SET morning_enabled=0, evening_enabled=0,
-                   quiz_enabled=0, welcome_enabled=0,
+                   quiz_enabled=0, hadith_enabled=0, welcome_enabled=0,
                    updated_at=CURRENT_TIMESTAMP
                WHERE chat_id=?""",
             (chat_id,),
@@ -111,6 +124,7 @@ class CommunityStore:
             "morning": "morning_enabled",
             "evening": "evening_enabled",
             "quiz": "quiz_enabled",
+            "hadith": "hadith_enabled",
             "welcome": "welcome_enabled",
         }
         column = allowed.get(key)
@@ -130,6 +144,7 @@ class CommunityStore:
             "morning": "morning_time",
             "evening": "evening_time",
             "quiz": "quiz_time",
+            "hadith": "hadith_time",
         }
         column = columns.get(key)
         if not column or not TIME_RE.fullmatch(value):
