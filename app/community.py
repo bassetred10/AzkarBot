@@ -391,6 +391,34 @@ async def _send_dhikr(
     return True
 
 
+async def _send_hadith(
+    chat_id: int, context: ContextTypes.DEFAULT_TYPE
+) -> bool:
+    content = context.application.bot_data["content"]
+    items = content.by_category("hadith")
+    if not items:
+        return False
+    item = random.choice(items)
+    lines = [
+        "🌿 أَثَر | حديث اليوم",
+        "━━━━━━━━━━━━━━━━━━",
+        item.get("title", "حديث نبوي"),
+        "",
+        item["text"],
+    ]
+    if item.get("narrator"):
+        lines.append(f"\n👤 الراوي: {item['narrator']}")
+    lines.extend(["", f"📚 {item['source']} · {item['reference']}"])
+    if item.get("grading"):
+        lines.append(f"الدرجة: {item['grading']}")
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="\n".join(lines),
+        disable_web_page_preview=True,
+    )
+    return True
+
+
 async def _send_group_quiz(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     games = context.application.bot_data["games"]
     db = context.application.bot_data["db"]
@@ -427,6 +455,8 @@ async def _deliver(
         return await _send_dhikr(chat_id, kind, context)
     if kind == "quiz":
         return await _send_group_quiz(chat_id, context)
+    if kind == "hadith":
+        return await _send_hadith(chat_id, context)
     raise ValueError("Unknown community delivery kind")
 
 
@@ -633,6 +663,10 @@ async def set_quiz_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await _set_group_time(update, context, "quiz")
 
 
+async def set_hadith_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _set_group_time(update, context, "hadith")
+
+
 async def channel_control_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -777,6 +811,7 @@ def register_community_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("setmorning", set_morning_time))
     application.add_handler(CommandHandler("setevening", set_evening_time))
     application.add_handler(CommandHandler("setquiz", set_quiz_time))
+    application.add_handler(CommandHandler("sethadith", set_hadith_time))
     application.add_handler(
         CallbackQueryHandler(community_callback, pattern=r"^community:")
     )
