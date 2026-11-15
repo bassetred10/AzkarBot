@@ -81,6 +81,30 @@ class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0]["correct_votes"], 6)
         self.assertEqual(rows[0]["is_closed"], 1)
 
+
+
+    async def test_category_is_persisted_for_group_session(self):
+        await self.store.create_session(
+            "sessiontopic", -100789, "Topic Group", 101, 4,
+            "q042", time.time() + 60, "seerah"
+        )
+        session = await self.store.active_for_chat(-100789)
+        self.assertEqual(session["category_id"], "seerah")
+
+    async def test_poll_can_store_a_custom_answer_index(self):
+        await self.store.register_poll(
+            "truefalse001", -100789, "q001",
+            is_anonymous=False, answer_index=1,
+            question_text="صح أم خطأ: مثال",
+        )
+        cursor = await self.store.conn.execute(
+            "SELECT answer_index, question_text FROM channel_quiz_polls WHERE poll_id=?",
+            ("truefalse001",),
+        )
+        row = await cursor.fetchone()
+        self.assertEqual(row["answer_index"], 1)
+        self.assertEqual(row["question_text"], "صح أم خطأ: مثال")
+
     async def test_stale_round_cannot_accept_an_answer(self):
         await self.store.create_session(
             "session001", -100123, "Test Group", 101, 2, "q001", time.time() + 60
