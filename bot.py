@@ -10,7 +10,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # الإعدادات
-TOKEN = "8849395576:AAFoHh3Y4vyf3K8lqs50Qxrm4flXbk1gUT0"
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+if not TOKEN:
+    raise RuntimeError("Set TELEGRAM_BOT_TOKEN in the environment before starting the bot.")
 CHANNEL_USERNAME = "@uec_u"
 DATA_FILE = "groups.json"
 
