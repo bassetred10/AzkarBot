@@ -181,6 +181,13 @@ class CommunityStore:
             "answers": """SELECT COUNT(*) AS n FROM channel_quiz_answers a
                           JOIN channel_quiz_polls p ON p.poll_id=a.poll_id
                           WHERE p.chat_id=?""",
+            "games": "SELECT COUNT(*) AS n FROM live_game_sessions WHERE chat_id=?",
+            "game_answers": """SELECT COUNT(*) AS n FROM live_game_answers a
+                               JOIN live_game_sessions s ON s.session_id=a.session_id
+                               WHERE s.chat_id=?""",
+            "game_players": """SELECT COUNT(DISTINCT a.telegram_id) AS n FROM live_game_answers a
+                               JOIN live_game_sessions s ON s.session_id=a.session_id
+                               WHERE s.chat_id=?""",
         }
         for name, sql in queries.items():
             cursor = await self.conn.execute(sql, (chat_id,))
@@ -587,8 +594,9 @@ async def community_callback(
                 f"📊 إحصائيات {target['title']}\n━━━━━━━━━━━━━━━━━━\n"
                 f"📨 منشورات ناجحة: {stats['sent']}\n"
                 f"⚠️ متعثرة: {stats['failed']}\n"
-                f"🎯 اختبارات: {stats['polls']}\n"
-                f"👥 إجابات مسجلة: {stats['answers']}",
+                f"🗳 اختبارات منشورة: {stats['polls']} · إجاباتها: {stats['answers']}\n"
+                f"🏁 بطولات جماعية: {stats['games']} · إجابات الجولات: {stats['game_answers']}\n"
+                f"👥 لاعبو البطولات: {stats['game_players']}",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("↩️ مركز القناة", callback_data=f"community:target:refresh:{target_id}")]
                 ]),
@@ -796,8 +804,9 @@ async def community_stats_command(
         f"📊 إحصائيات {chat.title or 'المجموعة'}\n━━━━━━━━━━━━━━━━━━\n"
         f"📨 منشورات ناجحة: {stats['sent']}\n"
         f"⚠️ منشورات متعثرة: {stats['failed']}\n"
-        f"🎯 اختبارات: {stats['polls']}\n"
-        f"👥 إجابات مسجلة: {stats['answers']}"
+        f"🗳 اختبارات منشورة: {stats['polls']} · إجاباتها: {stats['answers']}\n"
+        f"🏁 بطولات جماعية: {stats['games']} · إجابات الجولات: {stats['game_answers']}\n"
+        f"👥 لاعبو البطولات: {stats['game_players']}"
     )
 
 
