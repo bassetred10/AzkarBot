@@ -628,7 +628,7 @@ async def _start_live_game(
         return
     question = games.random_question(category_id)
     session_id = uuid.uuid4().hex[:10]
-    deadline = time.time() + LIVE_ROUND_SECONDS
+    deadline = time.time() + round_seconds
     created = await store.create_session(
         session_id, chat.id, chat.title or "مجموعة أَثَر",
         user.id, rounds, question["id"], deadline, category_id, round_seconds,
