@@ -3,12 +3,15 @@ from types import SimpleNamespace
 
 from app.community import CommunityStore, _send_community_quiz
 from app.database import Database
+from app.live_games import LiveGameStore
 
 
 class CommunityStoreTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.db = Database(":memory:")
         await self.db.initialize()
+        self.live_store = LiveGameStore(self.db)
+        await self.live_store.initialize()
         self.store = CommunityStore(self.db)
         await self.store.initialize()
 
