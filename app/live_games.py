@@ -730,6 +730,25 @@ async def start_live_category_callback(
     await _start_live_game(update, context, category_id, DEFAULT_ROUNDS)
 
 
+
+
+async def speed_arena_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.message:
+        return
+    category_id = query.data.split(":", 2)[2]
+    if category_id != "all" and category_id not in CATEGORY_LABELS:
+        await query.answer("هذا الباب غير متاح.", show_alert=True)
+        return
+    await query.answer("⚡ انطلاق سباق السرعة...")
+    await _start_live_game(
+        update, context, category_id=category_id,
+        rounds=DEFAULT_ROUNDS, round_seconds=12,
+    )
+
+
 async def true_false_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -1091,6 +1110,7 @@ async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if chat_type in ("group", "supergroup"):
         rows.extend([
             [InlineKeyboardButton("🏁 بطولة المجموعة · كل الأبواب", callback_data="arena:start:all", style="success")],
+        [InlineKeyboardButton("⚡ سباق السرعة · 12 ثانية", callback_data="arena:speed:all", style="success")],
             [
                 InlineKeyboardButton("بطولة القرآن", callback_data="arena:start:quran"),
                 InlineKeyboardButton("بطولة السيرة", callback_data="arena:start:seerah"),
@@ -1172,6 +1192,7 @@ def register_live_game_handlers(application: Application) -> None:
     application.add_handler(CallbackQueryHandler(live_admin_publish_callback, pattern=r"^adm:quiz$"), group=-1)
     application.add_handler(CommandHandler("help", enhanced_help_command), group=-1)
     application.add_handler(CallbackQueryHandler(enhanced_admin_help_callback, pattern=r"^adm:help$"), group=-1)
+    application.add_handler(CallbackQueryHandler(speed_arena_callback, pattern=r"^arena:speed:"))
     application.add_handler(CallbackQueryHandler(start_live_category_callback, pattern=r"^arena:start:"))
     application.add_handler(CallbackQueryHandler(live_answer_callback, pattern=r"^lg:"))
     application.add_handler(CallbackQueryHandler(solo_quiz_callback, pattern=r"^live:solo(?::|$)"))
@@ -1367,6 +1388,8 @@ async def enhanced_help_command(
         "🏁 بطولات المجموعات:\n"
         "/livegame — 5 جولات من كل الأبواب\n"
         "/livegame seerah 8 — 8 جولات في السيرة\n"
+        "/speedgame — سباق سريع، 12 ثانية للسؤال\n"
+        "/speedgame hadith 7 — سبع جولات حديث سريعة\n"
         "/qurangame · /sirahgame · /hadithgame\n"
         "/prophetsgame · /worshipgame\n"
         "/companionsgame · /mannersgame\n"
