@@ -390,7 +390,7 @@ class LiveGameStore:
         self, poll_id: str, telegram_id: int, choice: int, is_correct: bool
     ) -> bool:
         cursor = await self.conn.execute(
-            "SELECT poll_id FROM channel_quiz_polls WHERE poll_id=?",
+            "SELECT poll_id FROM channel_quiz_polls WHERE poll_id=? AND is_anonymous=0",
             (poll_id,),
         )
         if not await cursor.fetchone():
@@ -931,11 +931,12 @@ async def poll_answer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     store: LiveGameStore = context.application.bot_data["live_store"]
     # Custom modes may store their own answer index (for example, true/false).
     cursor = await store.conn.execute(
-        "SELECT question_id, answer_index FROM channel_quiz_polls WHERE poll_id=?",
+        "SELECT question_id, answer_index, is_anonymous FROM channel_quiz_polls WHERE poll_id=?",
         (answer.poll_id,),
     )
     row = await cursor.fetchone()
-    if not row:
+    # Anonymous polls are tracked only through aggregate Poll updates.
+    if not row or row["is_anonymous"]:
         return
     question = _games(context).get(row["question_id"])
     if not question:
