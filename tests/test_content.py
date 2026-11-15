@@ -32,5 +32,16 @@ class ContentCatalogueTests(unittest.TestCase):
         self.assertTrue(all(item["category"] in category_ids for item in catalogue.items))
 
 
+    def test_morning_and_evening_opening_remembrances_use_correct_wording(self):
+        content = ContentCatalogue()
+        content.load()
+        morning = content.get("morning_001")
+        evening = content.get("evening_001")
+
+        self.assertIn("وَإِلَيْكَ النُّشُورُ", morning["text"])
+        self.assertIn("وَإِلَيْكَ الْمَصِيرُ", evening["text"])
+        self.assertNotIn("النُّشُور", evening["text"])
+
+
 if __name__ == "__main__":
     unittest.main()
