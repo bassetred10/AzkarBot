@@ -904,7 +904,9 @@ async def live_round_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
     if next_question["id"] in used_ids:
         used_ids = []
     used_ids.append(next_question["id"])
-    next_deadline = time.time() + LIVE_ROUND_SECONDS
+    next_deadline = time.time() + max(
+        5, int(session.get("round_seconds") or LIVE_ROUND_SECONDS)
+    )
     advanced = await store.advance_session(
         session_id, next_question["id"], used_ids, next_deadline
     )
