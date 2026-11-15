@@ -1,64 +1,127 @@
 # ATHAR | أَثَر
 
-An Arabic-first Islamic companion for Telegram with source-aware adhkar, personal bookmarks, a Telegram Mini App, private learning quizzes, live group competitions, and native Telegram quiz polls.
+An Arabic-first Islamic companion for Telegram: source-aware adhkar, interactive learning games, live group competitions, per-group control panels, channel publishing, and scheduled content.
 
-## Features
+## Current feature set
 
-- Modular Telegram bot and FastAPI service.
-- Source-aware adhkar and hadith catalogue. The reading interface shows source names and reference numbers without exposing raw URLs.
-- Private learning quiz with personal progress and a general leaderboard. The question catalogue currently contains 40 source-referenced Islamic knowledge questions.
-- **Live group arena:** 1–10 timed rounds, a 25-second answer window per round, a visual countdown bar refreshed every five seconds, live participation counts, one answer per player per round, speed bonuses, sourced explanations, and a final podium.
-- **Native quiz publishing:** Telegram quiz polls with a 90-second voting window. Group polls are non-anonymous and produce named player scores. Channel polls are anonymous and provide aggregate vote/correct-answer statistics only.
-- Group results are scoped to each group; named group-poll scores feed the player leaderboard. Channel results remain anonymous and are shown as aggregate totals.
-- Live sessions and answers are stored in SQLite. Active round timers are restored after a normal service restart.
-- Admin-only destination management, message publishing, and quiz publishing.
-- Telegram Mini App shell, SQLite persistence, and Telegram Mini App initData verification.
+### Islamic learning and games
 
-## Admin setup
+- 100 question records across seven topics: Qur'an, Prophetic biography, Hadith, Prophets, worship, Companions, and manners.
+- Questions include an explanation and a source reference.
+- Private multiple-choice questions by topic.
+- True/False quiz polls with real Telegram quiz voting and stored answer keys.
+- Live group championships with 1–10 rounds, one answer per player per round, a visual timer, participant counts, speed points, explanations, and a final leaderboard.
+- Rapid-fire championships use 12 seconds per round; normal championships use 25 seconds.
+- Group leaderboards combine live championship points and named quiz-poll scores. Channel poll totals remain anonymous and are shown as aggregate statistics.
+- Sessions and scores are persisted in SQLite.
 
-1. DM the bot with /myid and copy the numeric ID.
-2. Set ADMIN_IDS to that number in the host's environment (or local .env).
-3. Restart the service. Use /admin to open the private administration panel.
-4. Add the bot as an administrator in each channel, with permission to post messages.
-5. Use /addtarget @channel to register a channel. Groups are registered automatically when the bot is added; /addtarget can also register them explicitly.
-6. Use /targets to review destinations and /deltarget CHAT_ID to remove one.
-7. To publish a post, send the content to the bot, then send /publish as a reply to that message.
-8. Use /channelquiz to publish an anonymous native timed quiz poll to registered channels. Use /channelboard for aggregate participation and correct-answer totals.
-9. Use /publishlivequiz to publish a native quiz poll to every registered group and channel: named scoring in groups, anonymous totals in channels.
-10. Use /channelboard for anonymous channel totals and /liveboard for named player scores from group competitions and group polls.
-11. Use /publishquiz for the older inline-keyboard question broadcast.
+### Group control center
 
-## User commands
+Group administrators can use /groupadmin inside their own group to:
+- Enable or disable morning adhkar, evening adhkar, daily quiz, and new-member welcome messages.
+- Publish a dhikr or quiz immediately using inline controls.
+- Set separate posting times using /setmorning, /setevening, and /setquiz.
+- Review group-only publishing statistics.
+- Use /groupstats to view delivery totals.
+
+Schedules are disabled by default, independently stored for each group, and use Africa/Algiers time by default. Schedules are restored after a normal service restart and paused when the bot is removed from a group.
+
+### Channel control center
+
+The bot owner can use /channeladmin @channel in private after registering the channel. The bot must be an administrator with permission to post messages.
+
+Each channel has its own:
+- Morning adhkar schedule.
+- Evening adhkar schedule.
+- Daily quiz schedule.
+- Immediate publish buttons and delivery statistics.
+
+Use /setchanneltime @channel morning 07:00 to change a channel schedule. Channel quizzes use anonymous Telegram polls; the bot reports aggregate vote and correct-answer counts without identifying voters.
+
+### Owner administration
+
+- /admin opens the owner dashboard.
+- /addtarget @channel registers a channel or /addtarget -100... registers a chat.
+- /targets and /deltarget manage registered destinations.
+- /publish copies a replied-to message to registered destinations.
+- /publishlivequiz publishes native quiz polls to registered groups and channels.
+- /channelquiz publishes a quiz poll to registered channels.
+- Owner statistics include active games, quiz activity, enabled schedules, and delivery health over the last seven days.
+
+The owner is configured through ADMIN_IDS. Group administrators do not receive global owner access.
+
+## Commands
+
+### Everyday and game commands
 
 - /start — main menu
-- /quiz — private learning question
-- /leaderboard — legacy private-quiz leaderboard
-- /livegame — start a five-round live competition in a group
-- /livegame 3 — start a competition with a chosen number of rounds (1–10)
-- /gameboard — leaderboard for the current group
-- /liveboard — leaderboard across group competitions and named group polls
-- /endgame — stop the active group competition (starter or group admins only)
-- /channelboard — anonymous channel poll statistics
+- /help — full command guide
+- /quiz — private multiple-choice question
+- /truefalse — True/False quiz poll; optionally add a topic
+- /livegame — five-round group championship
+- /livegame seerah 8 — eight rounds from the Prophetic biography topic
+- /speedgame — five rapid-fire rounds, 12 seconds each
+- /speedgame hadith 7 — seven rapid-fire Hadith rounds
+- /qurangame, /sirahgame, /hadithgame
+- /prophetsgame, /worshipgame, /companionsgame, /mannersgame
+- /gameboard — current group's leaderboard
+- /liveboard — overall named-player leaderboard
+- /endgame — stop the active group championship
+- /channelboard — anonymous channel-poll statistics
 - /myid — show your Telegram numeric ID
-- /help — command guide
 
-Group games award 10 points for a correct answer and up to 5 extra speed points. Each player can answer once per round. Scoring is for learning and does not involve money, prizes, or wagering.
+### Group administrator commands
+
+Use inside the group:
+- /groupadmin — group control center
+- /groupstats — group publishing statistics
+- /setmorning 07:00
+- /setevening 18:00
+- /setquiz 20:00
+
+### Owner-only commands
+
+Use in private unless the command targets a registered destination:
+- /admin — owner dashboard
+- /addtarget @channel
+- /targets
+- /deltarget CHAT_ID
+- /channeladmin @channel — open a channel control panel
+- /setchanneltime @channel morning 07:00
+- /channelquiz — publish to registered channels
+- /publishlivequiz — publish to all registered destinations
+- /publish — copy a replied-to message to all registered destinations
+
+## Owner setup
+
+1. Send /myid to the bot in private.
+2. Add your numeric Telegram ID to ADMIN_IDS in the Render environment or local .env file.
+3. Restart the service.
+4. Use /admin. Group administrators can separately use /groupadmin in their own group.
+5. Add the bot as an administrator in each channel and grant permission to post.
+6. Register the channel using /addtarget @channel, then open its panel with /channeladmin @channel.
+
+If ADMIN_IDS is empty, global publishing and owner controls stay locked. The bot does not automatically grant owner privileges to whoever asks.
 
 ## Local setup
 
-Copy .env.example to .env, set TELEGRAM_BOT_TOKEN and ADMIN_IDS, then:
+Copy .env.example to .env and set TELEGRAM_BOT_TOKEN and ADMIN_IDS. Then:
 
+```bash
 pip install -r requirements.txt
+python -m compileall -q app bot.py
+python -m unittest discover -s tests -v
 python bot.py
+```
 
-Polling runs when WEBHOOK_BASE_URL is empty. The HTTP service listens on PORT (default 8000) and exposes /healthz and /miniapp.
+Polling requests all Telegram update types so that group membership events and poll-result updates can be processed. When WEBHOOK_BASE_URL is set, the application uses the configured webhook.
+
+The FastAPI service exposes /healthz, /miniapp, and the authenticated /api/adhkar endpoint.
+
+## Persistence and production notes
+
+SQLite is suitable for local testing and a single service instance. Use durable storage or managed PostgreSQL before production hosting; ephemeral filesystems may reset between deployments. Run a single polling instance for a given bot token to avoid competing getUpdates consumers.
 
 ## Security
 
-Never commit .env. Rotate any Telegram token that has appeared in logs, screenshots, chats, or public repositories. HTTP client request logging is reduced to WARNING because Telegram API request paths contain the bot token.
-
-For a channel destination, the bot must be an administrator with can_post_messages permission. For groups, the bot must be allowed to send and edit its own messages. Publishing is performed only to destinations explicitly registered by an administrator.
-
-## Persistence
-
-SQLite is suitable for local testing. Use durable storage or managed PostgreSQL before public production hosting; ephemeral host filesystems may be reset.
+Never commit .env. Keep Telegram tokens private and out of logs. Channel and group publishing only targets destinations explicitly registered by the owner. Group settings are scoped to that group; channel schedules are controlled by the owner.
