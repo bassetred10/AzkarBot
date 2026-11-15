@@ -105,6 +105,23 @@ class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row["answer_index"], 1)
         self.assertEqual(row["question_text"], "صح أم خطأ: مثال")
 
+
+
+    async def test_group_board_includes_named_quiz_poll_scores(self):
+        await self.store.register_poll(
+            "group-poll-001", -100123, "q001", is_anonymous=False
+        )
+        await self.store.record_poll_answer(
+            "group-poll-001", self.user.id, 2, True
+        )
+
+        board = await self.store.group_board(-100123)
+
+        self.assertEqual(len(board), 1)
+        self.assertEqual(board[0]["score"], 10)
+        self.assertEqual(board[0]["correct"], 1)
+        self.assertEqual(board[0]["answered"], 1)
+
     async def test_stale_round_cannot_accept_an_answer(self):
         await self.store.create_session(
             "session001", -100123, "Test Group", 101, 2, "q001", time.time() + 60
