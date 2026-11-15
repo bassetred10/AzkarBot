@@ -1322,17 +1322,29 @@ async def enhanced_help_command(
     if not message:
         return
     await message.reply_text(
-        "📖 دليل أَثَر\n━━━━━━━━━━━━━━━━━━\n"
-        "/start — القائمة الرئيسية\n"
-        "/quiz — سؤال فردي\n"
-        "/livegame — منافسة جماعية من 5 جولات\n"
-        "/livegame 3 — تحديد عدد الجولات (1–10)\n"
-        "/gameboard — ترتيب مجموعتك\n"
-        "/liveboard — الترتيب العام\n"
-        "/endgame — إيقاف منافسة المجموعة\n"
-        "/channelboard — إحصائيات تصويت القنوات المجهول\n"
-        "/myid — رقم حسابك\n"
-        "/admin — لوحة الإدارة للمصرّح لهم"
+        "📖 دليل أَثَر | الألعاب والتحكم\n━━━━━━━━━━━━━━━━━━\n"
+        "🎮 الألعاب الفردية:\n"
+        "/quiz — سؤال عشوائي\n"
+        "/truefalse — صح أم خطأ (ويمكن إضافة باب)\n\n"
+        "🏁 بطولات المجموعات:\n"
+        "/livegame — 5 جولات من كل الأبواب\n"
+        "/livegame seerah 8 — 8 جولات في السيرة\n"
+        "/qurangame · /sirahgame · /hadithgame\n"
+        "/prophetsgame · /worshipgame\n"
+        "/companionsgame · /mannersgame\n"
+        "/gameboard — ترتيب هذه المجموعة\n"
+        "/liveboard — ترتيب اللاعبين العام\n"
+        "/endgame — إيقاف البطولة الحالية\n\n"
+        "🏘 إعداد المجموعة (لمشرفيها):\n"
+        "/groupadmin — مركز التحكم\n"
+        "/groupstats — إحصائيات النشر\n"
+        "/setmorning 07:00 · /setevening 18:00\n"
+        "/setquiz 20:00 — توقيت الجزائر\n\n"
+        "📣 القنوات (لمالك البوت):\n"
+        "/channeladmin @channel — لوحة القناة\n"
+        "/channelboard — إحصائيات التصويت المجهول\n"
+        "/setchanneltime @channel morning 07:00\n\n"
+        "/myid — رقم حسابك · /admin — إدارة المالك"
     )
     raise ApplicationHandlerStop
 
@@ -1349,15 +1361,21 @@ async def enhanced_admin_help_callback(
         raise ApplicationHandlerStop
     await query.answer()
     text = (
-        "🛡️ دليل إدارة أَثَر\n━━━━━━━━━━━━━━━━━━\n"
+        "🛡️ مركز إدارة أَثَر | المالك\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📣 الوجهات والنشر:\n"
         "/addtarget @channel — تسجيل قناة\n"
         "/targets — عرض الوجهات\n"
         "/deltarget CHAT_ID — حذف وجهة\n"
-        "/publishlivequiz — نشر اختبار تفاعلي لكل الوجهات\n"
-        "/channelquiz — نشر اختبار للقنوات فقط\n"
-        "/channelboard — إحصائيات نتائج القنوات\n"
-        "/publish — نسخ منشور إلى الوجهات\n"
-        "/admin — العودة إلى لوحة الإدارة"
+        "/publish — نشر رسالة يدوياً\n"
+        "/publishlivequiz — اختبار مباشر لكل الوجهات\n"
+        "/channelquiz — اختبار للقنوات فقط\n\n"
+        "📅 النشر المجدول للقنوات:\n"
+        "/channeladmin @channel — لوحة تفعيل الصباح والمساء والسؤال\n"
+        "/setchanneltime @channel morning 07:00\n\n"
+        "📊 /channelboard — إحصائيات القنوات\n"
+        "📈 زر الإحصائيات في لوحة المالك يعرض نشاط النظام.\n"
+        "إعدادات كل مجموعة يديرها مشرفوها عبر /groupadmin."
     )
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("📈 الإحصائيات", callback_data="adm:stats")],
