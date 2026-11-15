@@ -24,6 +24,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     PollAnswerHandler,
+    PollHandler,
 )
 
 from app.database import Database
@@ -84,7 +85,11 @@ class LiveGameStore:
                 poll_id TEXT PRIMARY KEY,
                 chat_id INTEGER NOT NULL,
                 question_id TEXT NOT NULL,
-                created_at REAL NOT NULL
+                created_at REAL NOT NULL,
+                is_anonymous INTEGER NOT NULL DEFAULT 0,
+                total_voters INTEGER NOT NULL DEFAULT 0,
+                correct_votes INTEGER NOT NULL DEFAULT 0,
+                is_closed INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS channel_quiz_answers (
                 poll_id TEXT NOT NULL REFERENCES channel_quiz_polls(poll_id) ON DELETE CASCADE,
@@ -97,6 +102,20 @@ class LiveGameStore:
             );
             """
         )
+        # Migrate databases created by an earlier live-games release.
+        columns_cursor = await self.conn.execute("PRAGMA table_info(channel_quiz_polls)")
+        columns = {row["name"] for row in await columns_cursor.fetchall()}
+        migrations = {
+            "is_anonymous": "INTEGER NOT NULL DEFAULT 0",
+            "total_voters": "INTEGER NOT NULL DEFAULT 0",
+            "correct_votes": "INTEGER NOT NULL DEFAULT 0",
+            "is_closed": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for column, definition in migrations.items():
+            if column not in columns:
+                await self.conn.execute(
+                    f"ALTER TABLE channel_quiz_polls ADD COLUMN {column} {definition}"
+                )
         await self.conn.commit()
 
     async def active_for_chat(self, chat_id: int) -> dict[str, Any] | None:
@@ -265,12 +284,55 @@ class LiveGameStore:
         )
         await self.conn.commit()
 
-    async def register_poll(self, poll_id: str, chat_id: int, question_id: str) -> None:
+    async def register_poll(
+        self, poll_id: str, chat_id: int, question_id: str, is_anonymous: bool = False
+    ) -> None:
         await self.conn.execute(
-            "INSERT OR REPLACE INTO channel_quiz_polls (poll_id, chat_id, question_id, created_at) VALUES (?, ?, ?, ?)",
-            (poll_id, chat_id, question_id, time.time()),
+            """INSERT OR REPLACE INTO channel_quiz_polls
+               (poll_id, chat_id, question_id, created_at, is_anonymous)
+               VALUES (?, ?, ?, ?, ?)""",
+            (poll_id, chat_id, question_id, time.time(), int(is_anonymous)),
         )
         await self.conn.commit()
+
+    async def record_poll_state(self, poll: Any) -> bool:
+        poll_id = getattr(poll, "id", None)
+        if not poll_id:
+            return False
+        options = getattr(poll, "options", ()) or ()
+        correct_ids = set(getattr(poll, "correct_option_ids", ()) or ())
+        correct_votes = sum(
+            int(getattr(option, "voter_count", 0) or 0)
+            for index, option in enumerate(options)
+            if index in correct_ids
+        )
+        cursor = await self.conn.execute(
+            """UPDATE channel_quiz_polls
+               SET total_voters=?, correct_votes=?, is_closed=?
+               WHERE poll_id=? AND is_anonymous=1""",
+            (
+                int(getattr(poll, "total_voter_count", 0) or 0),
+                correct_votes,
+                int(bool(getattr(poll, "is_closed", False))),
+                poll_id,
+            ),
+        )
+        await self.conn.commit()
+        return cursor.rowcount == 1
+
+    async def channel_poll_board(self, limit: int = 10) -> list[dict[str, Any]]:
+        cursor = await self.conn.execute(
+            """SELECT p.poll_id, p.chat_id, p.question_id, p.total_voters,
+                      p.correct_votes, p.is_closed, p.created_at,
+                      COALESCE(t.title, CAST(p.chat_id AS TEXT)) AS chat_title
+               FROM channel_quiz_polls p
+               LEFT JOIN publish_targets t ON t.chat_id=p.chat_id
+               WHERE p.is_anonymous=1
+               ORDER BY p.created_at DESC
+               LIMIT ?""",
+            (limit,),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
 
     async def record_poll_answer(
         self, poll_id: str, telegram_id: int, choice: int, is_correct: bool
@@ -712,11 +774,39 @@ async def poll_answer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+
+
+async def poll_state_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    poll = update.poll
+    if not poll:
+        return
+    store: LiveGameStore = context.application.bot_data["live_store"]
+    await store.record_poll_state(poll)
+
 async def channel_board_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_message:
         return
-    rows = await _store(context).channel_board(10)
-    await update.effective_message.reply_text(_board_text(rows, "📣 لوحة متسابقي القنوات"))
+    rows = await _store(context).channel_poll_board(10)
+    if not rows:
+        await update.effective_message.reply_text(
+            "📣 إحصائيات مسابقات القنوات\n━━━━━━━━━━━━━━━━━━\n"
+            "لم تُنشر اختبارات في القنوات بعد. استخدم /channelquiz."
+        )
+        return
+    lines = ["📣 إحصائيات مسابقات القنوات", "━━━━━━━━━━━━━━━━━━"]
+    for row in rows:
+        question = _games(context).get(row["question_id"])
+        title = question["question"] if question else "اختبار أَثَر"
+        status = "مغلقة" if row["is_closed"] else "مفتوحة"
+        lines.extend([
+            f"\n📍 {row['chat_title']} · {status}",
+            title,
+            f"👥 المشاركات: {row['total_voters']} · ✅ الصحيحة: {row['correct_votes']}",
+        ])
+    lines.append(
+        "\n🔒 تصويت القنوات مجهول؛ لذلك نعرض إحصاءات إجمالية لا أسماء المصوّتين."
+    )
+    await update.effective_message.reply_text("\n".join(lines)[:3900])
 
 
 async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -791,6 +881,7 @@ def register_live_game_handlers(application: Application) -> None:
     application.add_handler(CallbackQueryHandler(live_answer_callback, pattern=r"^lg:"))
     application.add_handler(CallbackQueryHandler(solo_quiz_callback, pattern=r"^live:solo$"))
     application.add_handler(PollAnswerHandler(poll_answer_handler))
+    application.add_handler(PollHandler(poll_state_handler))
 
 
 async def _publish_native_quiz_targets(
