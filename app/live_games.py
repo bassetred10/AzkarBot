@@ -561,7 +561,23 @@ async def _safe_edit(application: Application, session: dict[str, Any], text: st
         return False
 
 
-async def live_game_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+CATEGORY_ALIASES = {
+    "all": "all", "quran": "quran", "قرآن": "quran", "القرآن": "quran",
+    "seerah": "seerah", "sirah": "seerah", "سيرة": "seerah", "السيرة": "seerah",
+    "hadith": "hadith", "حديث": "hadith", "الحديث": "hadith",
+    "prophets": "prophets", "أنبياء": "prophets", "الأنبياء": "prophets",
+    "worship": "worship", "عبادات": "worship", "العبادات": "worship",
+    "companions": "companions", "صحابة": "companions", "الصحابة": "companions",
+    "manners": "manners", "أخلاق": "manners", "الأخلاق": "manners",
+}
+
+
+async def _start_live_game(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    category_id: str = "all",
+    rounds: int = DEFAULT_ROUNDS,
+) -> None:
     message = update.effective_message
     user = update.effective_user
     chat = update.effective_chat
@@ -569,48 +585,42 @@ async def live_game_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
     if chat.type not in ("group", "supergroup"):
         await message.reply_text(
-            "اللعب الجماعي يكون داخل مجموعة أو مجموعة فائقة. أضف أَثَر إلى مجموعتك ثم أرسل /livegame."
+            "المنافسة المباشرة تبدأ داخل مجموعة. أضف أَثَر إلى مجموعتك ثم استخدم /livegame."
         )
         return
-    rounds = DEFAULT_ROUNDS
-    if context.args:
-        try:
-            rounds = int(context.args[0])
-        except ValueError:
-            await message.reply_text("استخدم /livegame أو /livegame 5 (من 1 إلى 10 جولات).")
-            return
     if not 1 <= rounds <= MAX_ROUNDS:
-        await message.reply_text("عدد الجولات يجب أن يكون بين 1 و10.")
+        await message.reply_text("عدد الجولات يجب أن يكون من 1 إلى 10.")
+        return
+    games = _games(context)
+    if category_id != "all" and not games.by_category(category_id):
+        await message.reply_text("لا توجد أسئلة في هذا الباب حالياً.")
         return
     store = _store(context)
     active = await store.active_for_chat(chat.id)
     if active:
         await message.reply_text(
             f"هناك منافسة جارية بالفعل: الجولة {active['current_round']}/{active['total_rounds']}."
-            "\nاستخدم /gameboard للترتيب أو /endgame لإيقافها."
+            "\nاستخدم /gameboard أو /endgame."
         )
         return
-    games = _games(context)
-    question = games.random_question()
+    question = games.random_question(category_id)
     session_id = uuid.uuid4().hex[:10]
     deadline = time.time() + LIVE_ROUND_SECONDS
     created = await store.create_session(
-        session_id,
-        chat.id,
-        chat.title or "مجموعة أَثَر",
-        user.id,
-        rounds,
-        question["id"],
-        deadline,
+        session_id, chat.id, chat.title or "مجموعة أَثَر",
+        user.id, rounds, question["id"], deadline, category_id,
     )
     if not created:
         await message.reply_text("بدأت منافسة أخرى في هذه المجموعة للتو. استخدم /gameboard.")
         return
     session = await store.get_session(session_id)
+    topic = "كل الأبواب" if category_id == "all" else CATEGORY_LABELS[category_id]
     try:
         posted = await context.bot.send_message(
             chat_id=chat.id,
-            text=_question_text(session, question),
+            text=f"🏁 انطلقت بطولة أَثَر · {topic}\n"
+                 f"🧩 {rounds} جولات · ⏱ {LIVE_ROUND_SECONDS} ثانية لكل جولة\n\n"
+                 + _question_text(session, question),
             reply_markup=_question_keyboard(session_id, 1, question["options"]),
         )
         await store.set_message_id(session_id, posted.message_id)
@@ -618,8 +628,115 @@ async def live_game_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except TelegramError as exc:
         await store.finish_session(session_id, "cancelled")
         logger.warning("Could not start live game in %s: %s", chat.id, exc)
-        await message.reply_text("تعذر نشر الجولة. تأكد أن البوت يستطيع إرسال الرسائل في المجموعة.")
+        await message.reply_text("تعذر نشر الجولة. تأكد أن البوت يستطيع إرسال وتعديل رسائله.")
         return
+
+
+async def live_game_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    category_id = "all"
+    rounds = DEFAULT_ROUNDS
+    for arg in context.args:
+        if arg.isdigit():
+            rounds = int(arg)
+        elif arg in CATEGORY_ALIASES:
+            category_id = CATEGORY_ALIASES[arg]
+        else:
+            await update.effective_message.reply_text(
+                "الصيغة: /livegame [quran|seerah|hadith|prophets|worship|companions|manners] [1-10]"
+            )
+            return
+    await _start_live_game(update, context, category_id, rounds)
+
+
+async def live_category_game_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, category_id: str
+) -> None:
+    rounds = DEFAULT_ROUNDS
+    if context.args:
+        try:
+            rounds = int(context.args[0])
+        except ValueError:
+            await update.effective_message.reply_text("أدخل عدد الجولات من 1 إلى 10.")
+            return
+    await _start_live_game(update, context, category_id, rounds)
+
+
+def make_category_command(category_id: str):
+    async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        await live_category_game_command(update, context, category_id)
+    return handler
+
+
+async def start_live_category_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.message:
+        return
+    try:
+        category_id = query.data.split(":", 2)[2]
+    except IndexError:
+        await query.answer("اختر باباً صحيحاً.", show_alert=True)
+        return
+    if category_id != "all" and category_id not in CATEGORY_LABELS:
+        await query.answer("هذا الباب غير متاح.", show_alert=True)
+        return
+    await query.answer("تجهيز البطولة...")
+    await _start_live_game(update, context, category_id, DEFAULT_ROUNDS)
+
+
+async def true_false_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message, chat = update.effective_message, update.effective_chat
+    if not message or not chat:
+        return
+    category_id = "all"
+    if context.args:
+        raw = context.args[0]
+        category_id = CATEGORY_ALIASES.get(raw, "")
+        if not category_id:
+            await message.reply_text("استخدم /truefalse [quran|seerah|hadith|prophets|worship|companions|manners]")
+            return
+    question = _games(context).random_question(category_id)
+    correct_statement = random.choice((True, False))
+    if correct_statement:
+        statement_answer = question["answer"]
+    else:
+        statement_answer = random.choice([
+            index for index in range(len(question["options"]))
+            if index != question["answer"]
+        ])
+    statement = question["options"][statement_answer]
+    prompt = f"صح أم خطأ؟\n{question['question']}\n\n{statement}"
+    correct_index = 0 if correct_statement else 1
+    poll = await context.bot.send_poll(
+        chat_id=chat.id,
+        question=prompt[:300],
+        options=["✅ صح", "❌ خطأ"],
+        is_anonymous=chat.type == "channel",
+        allows_revoting=False,
+        type="quiz",
+        correct_option_ids=[correct_index],
+        explanation=(
+            f"الإجابة الصحيحة: {question['options'][question['answer']]}\n"
+            f"{question.get('explanation', '')}\nالمصدر: {question['source']}"
+        )[:200],
+        open_period=60,
+        hide_results_until_closes=True,
+    )
+    if poll.poll:
+        await _store(context).register_poll(
+            poll.poll.id,
+            chat.id,
+            question["id"],
+            is_anonymous=chat.type == "channel",
+            answer_index=correct_index,
+            question_text=prompt,
+        )
+    await context.application.bot_data["db"].log_delivery(
+        chat.id, "true_false_quiz", "sent"
+    )
 
 
 async def _is_chat_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
