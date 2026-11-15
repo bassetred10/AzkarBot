@@ -397,6 +397,10 @@ async def community_callback(
     await _store(context).ensure_group(chat.id, chat.title or "")
     parts = query.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
+    if action == "open":
+        await query.answer()
+        await _refresh_panel(query, context, chat.id)
+        return
     if action == "toggle" and len(parts) == 3:
         kind = parts[2]
         config = await _store(context).toggle(chat.id, kind, query.from_user.id)
