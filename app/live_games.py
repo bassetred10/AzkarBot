@@ -319,6 +319,7 @@ def _question_keyboard(session_id: str, round_no: int, options: list[str]) -> In
             InlineKeyboardButton(
                 options[pos][:60],
                 callback_data=f"lg:{session_id}:{round_no}:{pos}",
+                style="primary",
             )
             for pos in range(index, min(index + 2, len(options)))
         ]
@@ -733,8 +734,8 @@ async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "⏹ /endgame — إيقاف المنافسة (للبادئ أو مشرفي المجموعة)"
     )
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎯 سؤال فردي", callback_data="live:solo")],
-        [InlineKeyboardButton("🏆 الترتيب العام", callback_data="leaderboard")],
+        [InlineKeyboardButton("🎯 سؤال فردي", callback_data="live:solo", style="success")],
+        [InlineKeyboardButton("🏆 الترتيب العام", callback_data="leaderboard", style="primary")],
         [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
     ])
     try:
@@ -753,7 +754,11 @@ async def solo_quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     question = _games(context).random_question()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(option, callback_data=f"quiz:{question['id']}:{index}")]
+        [InlineKeyboardButton(
+            option,
+            callback_data=f"quiz:{question['id']}:{index}",
+            style="primary",
+        )]
         for index, option in enumerate(question["options"])
     ])
     await context.bot.send_message(
