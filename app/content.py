@@ -45,9 +45,7 @@ class ContentCatalogue:
         return [item for item in self.items if item["category"] == category_id]
 
     def public_payload(self) -> dict[str, Any]:
-        # Keep internal source URLs in the catalogue; the interface shows clean source names and references.
-        public_items = [
-            {key: value for key, value in item.items() if key != "source_url"}
-            for item in self.items
-        ]
+        # Source URLs point to the public references already attached to each catalogue entry.
+        # Expose them so the Mini App can offer a direct "open source" action.
+        public_items = [dict(item) for item in self.items]
         return {"categories": self.categories, "items": public_items}
