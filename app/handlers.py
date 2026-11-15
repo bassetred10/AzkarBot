@@ -25,24 +25,24 @@ def home_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📜 حديث اليوم", callback_data="cat:hadith"),
         ],
         [
-            InlineKeyboardButton("🎮 العب وتعلّم", callback_data="game"),
-            InlineKeyboardButton("🏆 لوحة المتصدرين", callback_data="leaderboard"),
+            InlineKeyboardButton("🎮 ساحة أَثَر", callback_data="game", style="success"),
+            InlineKeyboardButton("🏆 لوحة المتصدرين", callback_data="leaderboard", style="primary"),
         ],
         [
             InlineKeyboardButton("⭐ محفوظاتي", callback_data="bookmarks"),
             InlineKeyboardButton("🌿 مكتبتي", callback_data="miniapp"),
         ],
-        [InlineKeyboardButton("📊 نقاطي", callback_data="my_score"),
+        [InlineKeyboardButton("📊 نقاطي", callback_data="my_score", style="primary"),
          InlineKeyboardButton("ℹ️ عن أَثَر", callback_data="about")],
     ])
 
 
 def admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📈 الإحصائيات", callback_data="adm:stats"),
-         InlineKeyboardButton("📢 وجهات النشر", callback_data="adm:targets")],
-        [InlineKeyboardButton("🎯 نشر سؤال للمجموعات", callback_data="adm:quiz"),
-         InlineKeyboardButton("📋 طريقة النشر", callback_data="adm:help")],
+        [InlineKeyboardButton("📈 الإحصائيات", callback_data="adm:stats", style="primary"),
+         InlineKeyboardButton("📢 وجهات النشر", callback_data="adm:targets", style="primary")],
+        [InlineKeyboardButton("🎯 نشر مسابقة مباشرة", callback_data="adm:quiz", style="success"),
+         InlineKeyboardButton("📋 طريقة النشر", callback_data="adm:help", style="primary")],
         [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
     ])
 
