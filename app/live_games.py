@@ -1069,10 +1069,54 @@ async def solo_quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
+async def live_leaderboard_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.message:
+        return
+    await query.answer()
+    chat = query.message.chat
+    if chat.type in ("group", "supergroup"):
+        rows = await _store(context).group_board(chat.id, 10)
+        title = "🏆 ترتيب مجموعة أَثَر"
+    else:
+        store = _store(context)
+        cursor = await store.conn.execute(
+            """SELECT u.telegram_id, u.first_name, u.username,
+                      SUM(scores.points) AS score,
+                      SUM(scores.is_correct) AS correct,
+                      COUNT(*) AS answered
+               FROM (
+                   SELECT telegram_id, points, is_correct FROM live_game_answers
+                   UNION ALL
+                   SELECT telegram_id, points, is_correct FROM channel_quiz_answers
+               ) AS scores
+               JOIN users u ON u.telegram_id=scores.telegram_id
+               GROUP BY u.telegram_id
+               ORDER BY score DESC, correct DESC, answered DESC, u.telegram_id
+               LIMIT 10"""
+        )
+        rows = [dict(row) for row in await cursor.fetchall()]
+        title = "🌍 الترتيب العام — ساحة أَثَر"
+    await query.edit_message_text(
+        _board_text(rows, title),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎮 ساحة الألعاب", callback_data="game")],
+            [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
+        ]),
+    )
+    raise ApplicationHandlerStop
+
+
 def register_live_game_handlers(application: Application) -> None:
     # Group -1 replaces the old static game menu before legacy callbacks see it.
     application.add_handler(
         CallbackQueryHandler(game_menu_callback, pattern=r"^game$"),
+        group=-1,
+    )
+    application.add_handler(
+        CallbackQueryHandler(live_leaderboard_callback, pattern=r"^leaderboard$"),
         group=-1,
     )
     application.add_handler(CommandHandler("livegame", live_game_command))
