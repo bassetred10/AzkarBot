@@ -31,6 +31,14 @@ class ContentCatalogueTests(unittest.TestCase):
         category_ids = {category["id"] for category in catalogue.categories}
         self.assertTrue(all(item["category"] in category_ids for item in catalogue.items))
 
+    def test_public_payload_includes_direct_reference_links(self):
+        catalogue = ContentCatalogue()
+        catalogue.load()
+        payload = catalogue.public_payload()
+
+        self.assertTrue(payload["items"])
+        self.assertTrue(all(item["source_url"].startswith("https://") for item in payload["items"]))
+
 
     def test_abu_dawud_5068_morning_and_evening_text_matches_reference(self):
         content = ContentCatalogue()
