@@ -62,6 +62,7 @@ class LiveGameStore:
                 total_rounds INTEGER NOT NULL,
                 question_id TEXT NOT NULL,
                 category_id TEXT NOT NULL DEFAULT 'all',
+                round_seconds INTEGER NOT NULL DEFAULT 25,
                 used_question_ids TEXT NOT NULL DEFAULT '[]',
                 message_id INTEGER,
                 round_ends_at REAL NOT NULL,
@@ -112,6 +113,10 @@ class LiveGameStore:
             await self.conn.execute(
                 "ALTER TABLE live_game_sessions ADD COLUMN category_id TEXT NOT NULL DEFAULT 'all'"
             )
+        if "round_seconds" not in session_columns:
+            await self.conn.execute(
+                "ALTER TABLE live_game_sessions ADD COLUMN round_seconds INTEGER NOT NULL DEFAULT 25"
+            )
         poll_cursor = await self.conn.execute("PRAGMA table_info(channel_quiz_polls)")
         poll_columns = {row["name"] for row in await poll_cursor.fetchall()}
         migrations = {
@@ -161,17 +166,19 @@ class LiveGameStore:
         question_id: str,
         deadline: float,
         category_id: str = "all",
+        round_seconds: int = LIVE_ROUND_SECONDS,
     ) -> bool:
         try:
             await self.conn.execute(
                 """INSERT INTO live_game_sessions
                    (session_id, chat_id, chat_title, owner_id, status, current_round,
-                    total_rounds, question_id, category_id, used_question_ids,
-                    round_ends_at, started_at)
-                   VALUES (?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?)""",
+                    total_rounds, question_id, category_id, round_seconds,
+                    used_question_ids, round_ends_at, started_at)
+                   VALUES (?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     session_id, chat_id, chat_title, owner_id, total_rounds,
-                    question_id, category_id, json.dumps([question_id]), deadline, time.time(),
+                    question_id, category_id, round_seconds,
+                    json.dumps([question_id]), deadline, time.time(),
                 ),
             )
             await self.conn.commit()
@@ -204,7 +211,9 @@ class LiveGameStore:
         deadline = float(session["round_ends_at"])
         if now >= deadline:
             return "closed"
-        speed_bonus = min(5, math.ceil(max(0.0, deadline - now) / 5)) if is_correct else 0
+        round_seconds = max(5, int(session.get("round_seconds") or LIVE_ROUND_SECONDS))
+        bonus_step = round_seconds / 5
+        speed_bonus = min(5, math.ceil(max(0.0, deadline - now) / bonus_step)) if is_correct else 0
         points = (10 + speed_bonus) if is_correct else 0
         cursor = await self.conn.execute(
             """INSERT OR IGNORE INTO live_game_answers
@@ -434,15 +443,16 @@ def _question_text(
     )
     if intro:
         header = intro + "\n\n" + header
+    round_seconds = max(5, int(session.get("round_seconds") or LIVE_ROUND_SECONDS))
     remaining = max(
         0,
         min(
-            LIVE_ROUND_SECONDS,
+            round_seconds,
             math.ceil(float(session["round_ends_at"]) - time.time()),
         ),
     )
     blocks = 10
-    filled = max(0, min(blocks, math.ceil((remaining / LIVE_ROUND_SECONDS) * blocks)))
+    filled = max(0, min(blocks, math.ceil((remaining / round_seconds) * blocks)))
     progress = "🟩" * filled + "⬜" * (blocks - filled)
     return (
         header
@@ -586,6 +596,7 @@ async def _start_live_game(
     context: ContextTypes.DEFAULT_TYPE,
     category_id: str = "all",
     rounds: int = DEFAULT_ROUNDS,
+    round_seconds: int = LIVE_ROUND_SECONDS,
 ) -> None:
     message = update.effective_message
     user = update.effective_user
@@ -599,6 +610,9 @@ async def _start_live_game(
         return
     if not 1 <= rounds <= MAX_ROUNDS:
         await message.reply_text("عدد الجولات يجب أن يكون من 1 إلى 10.")
+        return
+    if not 5 <= round_seconds <= 60:
+        await message.reply_text("مدة الجولة يجب أن تكون بين 5 و60 ثانية.")
         return
     games = _games(context)
     if category_id != "all" and not games.by_category(category_id):
@@ -617,7 +631,7 @@ async def _start_live_game(
     deadline = time.time() + LIVE_ROUND_SECONDS
     created = await store.create_session(
         session_id, chat.id, chat.title or "مجموعة أَثَر",
-        user.id, rounds, question["id"], deadline, category_id,
+        user.id, rounds, question["id"], deadline, category_id, round_seconds,
     )
     if not created:
         await message.reply_text("بدأت منافسة أخرى في هذه المجموعة للتو. استخدم /gameboard.")
@@ -628,7 +642,7 @@ async def _start_live_game(
         posted = await context.bot.send_message(
             chat_id=chat.id,
             text=f"🏁 انطلقت بطولة أَثَر · {topic}\n"
-                 f"🧩 {rounds} جولات · ⏱ {LIVE_ROUND_SECONDS} ثانية لكل جولة\n\n"
+                 f"🧩 {rounds} جولات · ⏱ {round_seconds} ثانية لكل جولة\n\n"
                  + _question_text(session, question),
             reply_markup=_question_keyboard(session_id, 1, question["options"]),
         )
@@ -655,6 +669,28 @@ async def live_game_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             )
             return
     await _start_live_game(update, context, category_id, rounds)
+
+
+
+
+async def speed_game_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    category_id = "all"
+    rounds = DEFAULT_ROUNDS
+    for arg in context.args:
+        if arg.isdigit():
+            rounds = int(arg)
+        elif arg in CATEGORY_ALIASES:
+            category_id = CATEGORY_ALIASES[arg]
+        else:
+            await update.effective_message.reply_text(
+                "الصيغة: /speedgame [topic] [1-10] — كل جولة 12 ثانية."
+            )
+            return
+    await _start_live_game(
+        update, context, category_id=category_id, rounds=rounds, round_seconds=12
+    )
 
 
 async def live_category_game_command(
@@ -1116,6 +1152,7 @@ def register_live_game_handlers(application: Application) -> None:
         group=-1,
     )
     application.add_handler(CommandHandler("livegame", live_game_command))
+    application.add_handler(CommandHandler("speedgame", speed_game_command))
     application.add_handler(CommandHandler("sirahgame", make_category_command("seerah")))
     application.add_handler(CommandHandler("qurangame", make_category_command("quran")))
     application.add_handler(CommandHandler("hadithgame", make_category_command("hadith")))
