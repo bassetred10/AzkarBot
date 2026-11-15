@@ -176,11 +176,24 @@ class LiveGameStore:
         cursor = await self.conn.execute(
             """INSERT OR IGNORE INTO live_game_answers
                (session_id, round_no, telegram_id, choice, is_correct, points, answered_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (session_id, round_no, telegram_id, choice, int(is_correct), points, now),
+               SELECT session_id, ?, ?, ?, ?, ?, ?
+               FROM live_game_sessions
+               WHERE session_id=? AND status='active'
+                 AND current_round=? AND round_ends_at>?""",
+            (
+                round_no, telegram_id, choice, int(is_correct), points, now,
+                session_id, round_no, now,
+            ),
         )
         await self.conn.commit()
-        return "ok" if cursor.rowcount else "duplicate"
+        if cursor.rowcount:
+            return "ok"
+        cursor = await self.conn.execute(
+            """SELECT 1 FROM live_game_answers
+               WHERE session_id=? AND round_no=? AND telegram_id=?""",
+            (session_id, round_no, telegram_id),
+        )
+        return "duplicate" if await cursor.fetchone() else "closed"
 
     async def round_stats(self, session_id: str, round_no: int) -> dict[str, int]:
         cursor = await self.conn.execute(
