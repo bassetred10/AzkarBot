@@ -237,6 +237,52 @@ def _panel_keyboard(settings: dict[str, Any]) -> InlineKeyboardMarkup:
     ])
 
 
+def _channel_panel_text(settings: dict[str, Any]) -> str:
+    def state(enabled: int) -> str:
+        return "🟢 مفعّل" if enabled else "⚪ متوقف"
+
+    return (
+        f"📣 مركز تحكم القناة\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"📍 {settings.get('title') or 'قناتك'}\n"
+        f"🌍 التوقيت: {settings['timezone']}\n\n"
+        f"☀️ ذكر الصباح: {state(settings['morning_enabled'])} · {settings['morning_time']}\n"
+        f"🌙 ذكر المساء: {state(settings['evening_enabled'])} · {settings['evening_time']}\n"
+        f"🎯 سؤال اليوم: {state(settings['quiz_enabled'])} · {settings['quiz_time']}\n\n"
+        "تغيير الموعد: /setchanneltime @channel morning 07:00\n"
+        "التوقيت الافتراضي: الجزائر. التلقائي متوقف حتى تفعّله."
+    )
+
+
+def _channel_panel_keyboard(
+    settings: dict[str, Any], chat_id: int
+) -> InlineKeyboardMarkup:
+    def button(title: str, key: str, kind: str) -> InlineKeyboardButton:
+        enabled = bool(settings[key])
+        return InlineKeyboardButton(
+            ("🟢 " if enabled else "⚪ ") + title,
+            callback_data=f"community:target:toggle:{kind}:{chat_id}",
+            style="success" if enabled else None,
+        )
+
+    return InlineKeyboardMarkup([
+        [
+            button("ذكر الصباح", "morning_enabled", "morning"),
+            button("ذكر المساء", "evening_enabled", "evening"),
+        ],
+        [button("سؤال اليوم", "quiz_enabled", "quiz")],
+        [
+            InlineKeyboardButton("📿 انشر ذكر الآن", callback_data=f"community:target:post:morning:{chat_id}"),
+            InlineKeyboardButton("🌙 انشر ذكر مساء", callback_data=f"community:target:post:evening:{chat_id}"),
+        ],
+        [
+            InlineKeyboardButton("🎯 انشر سؤالاً", callback_data=f"community:target:post:quiz:{chat_id}", style="primary"),
+            InlineKeyboardButton("📊 إحصائيات", callback_data=f"community:target:stats:{chat_id}"),
+        ],
+        [InlineKeyboardButton("🔄 تحديث", callback_data=f"community:target:refresh:{chat_id}")],
+    ])
+
+
 async def group_control_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -318,23 +364,29 @@ async def _send_dhikr(
 
 async def _send_group_quiz(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     games = context.application.bot_data["games"]
+    db = context.application.bot_data["db"]
+    targets = await db.list_targets()
+    target = next((item for item in targets if item["chat_id"] == chat_id), None)
+    if not target:
+        raise RuntimeError("This destination is not registered with ATHAR")
+    is_anonymous = target["chat_type"] == "channel"
     question = games.random_question()
     poll = await context.bot.send_poll(
         chat_id=chat_id,
         question=question["question"][:300],
         options=[str(option)[:100] for option in question["options"][:10]],
-        is_anonymous=False,
+        is_anonymous=is_anonymous,
         allows_revoting=False,
         type="quiz",
         correct_option_ids=[question["answer"]],
         explanation=(question.get("explanation") or "راجع المصدر المذكور.")[:200],
         open_period=90,
-        close_date=None,
+        hide_results_until_closes=True,
     )
     live_store = context.application.bot_data["live_store"]
     if poll.poll:
         await live_store.register_poll(
-            poll.poll.id, chat_id, question["id"], is_anonymous=False
+            poll.poll.id, chat_id, question["id"], is_anonymous=is_anonymous
         )
     return True
 
@@ -388,6 +440,75 @@ async def community_callback(
     if not query or not query.from_user or not query.message:
         return
     chat = query.message.chat
+    parts = query.data.split(":")
+    if len(parts) >= 5 and parts[1] == "target":
+        settings = context.application.bot_data["settings"]
+        if query.from_user.id not in settings.admin_ids:
+            await query.answer("مركز القناة خاص بمالك البوت.", show_alert=True)
+            return
+        action = parts[2]
+        kind = parts[3] if action in ("toggle", "post") else ""
+        try:
+            target_id = int(parts[4] if kind else parts[3])
+        except (ValueError, IndexError):
+            await query.answer("وجهة غير صالحة.", show_alert=True)
+            return
+        targets = await context.application.bot_data["db"].list_targets()
+        target = next(
+            (item for item in targets if item["chat_id"] == target_id and item["chat_type"] == "channel"),
+            None,
+        )
+        if not target:
+            await query.answer("القناة غير مسجلة. أضفها أولاً عبر /addtarget.", show_alert=True)
+            return
+        await _store(context).ensure_group(target_id, target["title"])
+        if action == "toggle" and kind in SCHEDULES:
+            config = await _store(context).toggle(target_id, kind, query.from_user.id)
+            await _reschedule_group(context.application, target_id, config)
+            await query.answer("تم تحديث إعداد القناة.")
+            await query.edit_message_text(
+                _channel_panel_text(config),
+                reply_markup=_channel_panel_keyboard(config, target_id),
+            )
+            return
+        if action == "post" and kind in SCHEDULES:
+            await query.answer("جارٍ النشر...")
+            try:
+                sent = await _deliver(target_id, kind, context)
+                if sent:
+                    await context.application.bot_data["db"].log_delivery(
+                        target_id, f"manual_{kind}", "sent", telegram_id=query.from_user.id
+                    )
+                    await query.message.reply_text("✅ نُشر المحتوى في القناة.")
+            except TelegramError as exc:
+                await query.message.reply_text(
+                    f"تعذّر النشر. تحقق من صلاحية البوت للنشر في القناة: {type(exc).__name__}"
+                )
+            return
+        if action == "stats":
+            await query.answer()
+            stats = await _store(context).group_stats(target_id)
+            await query.edit_message_text(
+                f"📊 إحصائيات {target['title']}\n━━━━━━━━━━━━━━━━━━\n"
+                f"📨 منشورات ناجحة: {stats['sent']}\n"
+                f"⚠️ متعثرة: {stats['failed']}\n"
+                f"🎯 اختبارات: {stats['polls']}\n"
+                f"👥 إجابات مسجلة: {stats['answers']}",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("↩️ مركز القناة", callback_data=f"community:target:refresh:{target_id}")]
+                ]),
+            )
+            return
+        if action == "refresh":
+            await query.answer()
+            config = await _store(context).get(target_id)
+            await query.edit_message_text(
+                _channel_panel_text(config),
+                reply_markup=_channel_panel_keyboard(config, target_id),
+            )
+            return
+        await query.answer("طلب غير معروف.", show_alert=True)
+        return
     if chat.type not in ("group", "supergroup"):
         await query.answer("افتح مركز التحكم من داخل المجموعة.", show_alert=True)
         return
@@ -483,6 +604,82 @@ async def set_quiz_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await _set_group_time(update, context, "quiz")
 
 
+async def channel_control_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message, user, chat = update.effective_message, update.effective_user, update.effective_chat
+    settings = context.application.bot_data["settings"]
+    if not message or not user or not chat:
+        return
+    if chat.type != "private":
+        await message.reply_text("أرسل /channeladmin @channel في الخاص لفتح إعدادات القناة بأمان.")
+        return
+    if user.id not in settings.admin_ids:
+        await message.reply_text(
+            "إدارة القنوات غير مهيّأة. أرسل /myid ثم أضف رقمك إلى ADMIN_IDS في إعدادات Render أو ملف .env."
+            if not settings.admin_ids
+            else "مركز القنوات خاص بمالك البوت."
+        )
+        return
+    if not context.args:
+        await message.reply_text("الصيغة: /channeladmin @channel")
+        return
+    try:
+        target = await context.bot.get_chat(context.args[0])
+        if target.type != "channel":
+            await message.reply_text("هذا ليس معرّف قناة.")
+            return
+        me = await context.bot.get_me()
+        bot_member = await context.bot.get_chat_member(target.id, me.id)
+        if bot_member.status not in ("administrator", "creator") or not getattr(bot_member, "can_post_messages", False):
+            await message.reply_text("يجب أن يكون البوت مشرفاً في القناة مع صلاحية نشر الرسائل.")
+            return
+        registered = await context.application.bot_data["db"].list_targets()
+        if not any(item["chat_id"] == target.id and item["chat_type"] == "channel" for item in registered):
+            await message.reply_text("سجّل القناة أولاً عبر /addtarget @channel.")
+            return
+        await _store(context).ensure_group(target.id, target.title or str(target.id))
+        config = await _store(context).get(target.id)
+        await message.reply_text(
+            _channel_panel_text(config),
+            reply_markup=_channel_panel_keyboard(config, target.id),
+        )
+    except TelegramError as exc:
+        await message.reply_text(f"تعذر فتح إعدادات القناة. تحقق من المعرّف والصلاحيات: {type(exc).__name__}")
+
+
+async def set_channel_time(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message, user, chat = update.effective_message, update.effective_user, update.effective_chat
+    settings = context.application.bot_data["settings"]
+    if not message or not user or not chat:
+        return
+    if chat.type != "private" or user.id not in settings.admin_ids:
+        await message.reply_text("هذا الأمر مخصص لمالك البوت في الخاص.")
+        return
+    if len(context.args) != 3:
+        await message.reply_text("الصيغة: /setchanneltime @channel morning|evening|quiz HH:MM")
+        return
+    channel_ref, kind, value = context.args
+    try:
+        target = await context.bot.get_chat(channel_ref)
+        if target.type != "channel":
+            await message.reply_text("هذا ليس معرّف قناة.")
+            return
+        targets = await context.application.bot_data["db"].list_targets()
+        if not any(item["chat_id"] == target.id and item["chat_type"] == "channel" for item in targets):
+            await message.reply_text("سجّل القناة أولاً عبر /addtarget @channel.")
+            return
+        config = await _store(context).set_time(target.id, kind, value, user.id)
+        if config[SCHEDULES[kind][0]]:
+            await _reschedule_group(context.application, target.id, config)
+        await message.reply_text(f"✅ تم ضبط {SCHEDULES[kind][2]} إلى {value} بتوقيت الجزائر.")
+    except (TelegramError, ValueError, KeyError) as exc:
+        await message.reply_text(f"تعذر ضبط الوقت: {type(exc).__name__}. استخدم HH:MM.")
+    return
+
+
 async def community_stats_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -545,6 +742,8 @@ async def restore_community_jobs(application: Application) -> None:
 
 def register_community_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("groupadmin", group_control_command))
+    application.add_handler(CommandHandler("channeladmin", channel_control_command))
+    application.add_handler(CommandHandler("setchanneltime", set_channel_time))
     application.add_handler(CommandHandler("groupstats", community_stats_command))
     application.add_handler(CommandHandler("setmorning", set_morning_time))
     application.add_handler(CommandHandler("setevening", set_evening_time))
