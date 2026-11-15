@@ -155,11 +155,20 @@ class Database:
         cursor = await self._db.execute("SELECT chat_id, title, chat_type, enabled FROM publish_targets ORDER BY title")
         return [dict(row) for row in await cursor.fetchall()]
 
-    async def log_delivery(self, chat_id: int, kind: str, status: str, error_code: str | None = None) -> None:
+    async def log_delivery(
+        self,
+        chat_id: int,
+        kind: str,
+        status: str,
+        error_code: str | None = None,
+        telegram_id: int | None = None,
+    ) -> None:
         assert self._db is not None
         await self._db.execute(
-            "INSERT INTO delivery_logs (chat_id, kind, status, error_code) VALUES (?, ?, ?, ?)",
-            (chat_id, kind, status, error_code),
+            """INSERT INTO delivery_logs
+               (telegram_id, chat_id, kind, status, error_code)
+               VALUES (?, ?, ?, ?, ?)""",
+            (telegram_id, chat_id, kind, status, error_code),
         )
         await self._db.commit()
 
