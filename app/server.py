@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import Application
 
 from app.config import ROOT_DIR, get_settings
+from app.community import CommunityStore, register_community_handlers, restore_community_jobs
 from app.content import ContentCatalogue
 from app.database import Database
 from app.games import GameCatalogue
@@ -40,6 +41,8 @@ async def lifespan(api: FastAPI):
     games.load()
     live_store = LiveGameStore(db)
     await live_store.initialize()
+    community_store = CommunityStore(db)
+    await community_store.initialize()
 
     telegram_app = (
         Application.builder()
@@ -52,10 +55,13 @@ async def lifespan(api: FastAPI):
     )
     register_handlers(telegram_app, db, content, games, settings)
     telegram_app.bot_data["live_store"] = live_store
+    telegram_app.bot_data["community_store"] = community_store
     register_live_game_handlers(telegram_app)
+    register_community_handlers(telegram_app)
     await telegram_app.initialize()
     await telegram_app.start()
     await restore_live_sessions(telegram_app)
+    await restore_community_jobs(telegram_app)
 
     polling = not bool(settings.webhook_base_url)
     if polling:
@@ -74,6 +80,7 @@ async def lifespan(api: FastAPI):
     api.state.content = content
     api.state.games = games
     api.state.live_store = live_store
+    api.state.community_store = community_store
     api.state.telegram_app = telegram_app
     api.state.polling = polling
     yield
