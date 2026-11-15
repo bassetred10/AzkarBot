@@ -6,8 +6,8 @@ An Arabic-first Islamic companion for Telegram with source-aware adhkar, persona
 
 - Modular Telegram bot and FastAPI service.
 - Source-aware adhkar and hadith catalogue. The reading interface shows source names and reference numbers without exposing raw URLs.
-- Private learning quiz with personal progress and a general leaderboard.
-- **Live group arena:** 1–10 timed rounds, a 25-second answer window per round, one answer per player per round, live participation counts, speed bonuses, answer explanations, and a final podium.
+- Private learning quiz with personal progress and a general leaderboard. The question catalogue currently contains 40 source-referenced Islamic knowledge questions.
+- **Live group arena:** 1–10 timed rounds, a 25-second answer window per round, a visual countdown bar refreshed every five seconds, live participation counts, one answer per player per round, speed bonuses, sourced explanations, and a final podium.
 - **Native quiz publishing:** Telegram quiz polls with a 90-second voting window. Group polls are non-anonymous and produce named player scores. Channel polls are anonymous and provide aggregate vote/correct-answer statistics only.
 - Group results are scoped to each group; named group-poll scores feed the player leaderboard. Channel results remain anonymous and are shown as aggregate totals.
 - Live sessions and answers are stored in SQLite. Active round timers are restored after a normal service restart.
