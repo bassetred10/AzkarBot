@@ -962,11 +962,17 @@ async def poll_state_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await store.record_poll_state(poll)
 
 async def channel_board_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_message:
+    message = update.effective_message
+    user = update.effective_user
+    settings = context.application.bot_data["settings"]
+    if not message or not user:
+        return
+    if user.id not in settings.admin_ids:
+        await message.reply_text("⛔ إحصائيات القنوات خاصة بمالك البوت.")
         return
     rows = await _store(context).channel_poll_board(10)
     if not rows:
-        await update.effective_message.reply_text(
+        await message.reply_text(
             "📣 إحصائيات مسابقات القنوات\n━━━━━━━━━━━━━━━━━━\n"
             "لم تُنشر اختبارات في القنوات بعد. استخدم /channelquiz."
         )
@@ -986,7 +992,7 @@ async def channel_board_command(update: Update, context: ContextTypes.DEFAULT_TY
     lines.append(
         "\n🔒 تصويت القنوات مجهول؛ لذلك نعرض إحصاءات إجمالية لا أسماء المصوّتين."
     )
-    await update.effective_message.reply_text("\n".join(lines)[:3900])
+    await message.reply_text("\n".join(lines)[:3900])
 
 
 async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
