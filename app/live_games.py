@@ -873,90 +873,16 @@ async def live_admin_stats_callback(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     query = update.callback_query
-    if not query or not query.from_user:
-        return
-    settings = context.application.bot_data["settings"]
-    if query.from_user.id not in settings.admin_ids:
-        await query.answer("غير مصرح لك بالدخول.", show_alert=True)
-        raise ApplicationHandlerStop
-    await query.answer()
-    store = _store(context)
-    stats = await _live_stats(store)
-    db_stats = await context.application.bot_data["db"].stats()
-    text = (
-        "📈 إحصائيات أَثَر — لوحة الإدارة\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"👤 المستخدمون: {db_stats['users']}\n"
-        f"⭐ المحفوظات: {db_stats['bookmarks']}\n"
-        f"📢 وجهات النشر: {db_stats['targets']}\n"
-        f"🎮 المنافسات الجماعية: {stats['sessions']}\n"
-        f"🟢 منافسات نشطة الآن: {stats['active']}\n"
-        f"🗳 إجابات الجولات: {stats['group_answers']}\n"
-        f"📣 اختبارات القنوات المنشورة: {stats['polls']}\n"
-        f"👥 أصوات اختبارات القنوات: {stats['poll_answers']}\n"
-        f"🧠 إجابات الأسئلة الفردية: {db_stats['game_answers']}"
-    )
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 وجهات النشر", callback_data="adm:targets")],
-        [InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="adm:help")],
-    ])
-    try:
-        await query.edit_message_text(text, reply_markup=keyboard)
-    except BadRequest as exc:
-        if "Message is not modified" not in str(exc):
-            raise
-    raise ApplicationHandlerStop
-
-
-async def live_admin_publish_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    query = update.callback_query
-    if not query or not query.from_user:
-        return
-    settings = context.application.bot_data["settings"]
-    if query.from_user.id not in settings.admin_ids:
-        await query.answer("غير مصرح لك بالنشر.", show_alert=True)
-        raise ApplicationHandlerStop
-    await query.answer("جارٍ نشر الاختبار...")
-    sent, failed = await _publish_native_quiz_targets(context)
-    text = (
-        "📣 تقرير نشر الاختبار التفاعلي\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"✅ أُرسل إلى: {sent}\n"
-        f"⚠️ تعذّر: {failed}\n"
-        "⏳ مدة التصويت: 90 ثانية\n"
-        "📊 تُجمع الإجابات المسجلة تلقائياً."
-    )
-    try:
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📈 تحديث الإحصائيات", callback_data="adm:stats")],
-                [InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="adm:help")],
-            ]),
-        )
-    except BadRequest as exc:
-        if "Message is not modified" not in str(exc):
-            raise
-    raise ApplicationHandlerStop
-
-
-async def live_admin_stats_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    query = update.callback_query
     if not query:
         return
-    # The authorization check and render logic are shared with the callback above.
-    await query.answer()
-    store = _store(context)
-    stats = await _live_stats(store)
-    db_stats = await context.application.bot_data["db"].stats()
     settings = context.application.bot_data["settings"]
     if not query.from_user or query.from_user.id not in settings.admin_ids:
         await query.answer("غير مصرح لك بالدخول.", show_alert=True)
         raise ApplicationHandlerStop
+    await query.answer()
+    store = _store(context)
+    stats = await _live_stats(store)
+    db_stats = await context.application.bot_data["db"].stats()
     text = (
         "📈 إحصائيات أَثَر — لوحة الإدارة\n━━━━━━━━━━━━━━━━━━\n"
         f"👤 المستخدمون: {db_stats['users']}\n"
