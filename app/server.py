@@ -65,7 +65,10 @@ async def lifespan(api: FastAPI):
 
     polling = not bool(settings.webhook_base_url)
     if polling:
-        await telegram_app.updater.start_polling(drop_pending_updates=False)
+        await telegram_app.updater.start_polling(
+            drop_pending_updates=False,
+            allowed_updates=Update.ALL_TYPES,
+        )
         logger.info("ATHAR Telegram bot started in polling mode")
     else:
         await telegram_app.bot.set_webhook(
