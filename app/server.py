@@ -10,6 +10,7 @@ from telegram.ext import Application
 from app.config import ROOT_DIR, get_settings
 from app.content import ContentCatalogue
 from app.database import Database
+from app.games import GameCatalogue
 from app.handlers import register_handlers
 from app.security import validate_telegram_init_data
 
@@ -19,6 +20,8 @@ logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+# HTTP client URLs contain the bot API path; never write them to logs.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("athar")
 
 
@@ -28,16 +31,26 @@ async def lifespan(api: FastAPI):
     await db.initialize()
     content = ContentCatalogue()
     content.load()
+    games = GameCatalogue()
+    games.load()
 
-    telegram_app = Application.builder().token(settings.telegram_bot_token).build()
-    register_handlers(telegram_app, db, content, settings)
+    telegram_app = (
+        Application.builder()
+        .token(settings.telegram_bot_token)
+        .connect_timeout(30)
+        .read_timeout(45)
+        .write_timeout(30)
+        .pool_timeout(30)
+        .build()
+    )
+    register_handlers(telegram_app, db, content, games, settings)
     await telegram_app.initialize()
     await telegram_app.start()
 
     polling = not bool(settings.webhook_base_url)
     if polling:
         await telegram_app.updater.start_polling(drop_pending_updates=False)
-        logger.info("Telegram bot started in polling mode")
+        logger.info("ATHAR Telegram bot started in polling mode")
     else:
         await telegram_app.bot.set_webhook(
             url=settings.webhook_base_url + "/telegram/webhook",
@@ -45,10 +58,11 @@ async def lifespan(api: FastAPI):
             allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=False,
         )
-        logger.info("Telegram webhook configured")
+        logger.info("ATHAR Telegram webhook configured")
 
     api.state.db = db
     api.state.content = content
+    api.state.games = games
     api.state.telegram_app = telegram_app
     api.state.polling = polling
     yield
@@ -60,7 +74,7 @@ async def lifespan(api: FastAPI):
     await db.close()
 
 
-api = FastAPI(title="ATHAR API", version="0.1.0", lifespan=lifespan)
+api = FastAPI(title="ATHAR API", version="0.2.0", lifespan=lifespan)
 
 
 @api.get("/healthz")
@@ -90,9 +104,7 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
 
 @api.get("/api/adhkar")
 async def list_adhkar(request: Request, authorization: str | None = Header(default=None)):
-    token = ""
-    if authorization and authorization.startswith("tma "):
-        token = authorization[4:]
+    token = authorization[4:] if authorization and authorization.startswith("tma ") else ""
     try:
         validate_telegram_init_data(token, settings.telegram_bot_token)
     except (ValueError, TypeError):
@@ -120,8 +132,10 @@ async def miniapp_assets(asset_path: str):
 
 
 def run() -> None:
+    import os
     import uvicorn
-    uvicorn.run("app.server:api", host="0.0.0.0", port=settings.port, reload=False)
+    port = int(os.environ.get("PORT", settings.port))
+    uvicorn.run("app.server:api", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

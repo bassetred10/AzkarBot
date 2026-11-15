@@ -55,6 +55,21 @@ class Database:
                 enabled INTEGER NOT NULL DEFAULT 1,
                 joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS publish_targets (
+                chat_id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                chat_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS game_answers (
+                telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                question_id TEXT NOT NULL,
+                day TEXT NOT NULL,
+                is_correct INTEGER NOT NULL,
+                answered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (telegram_id, question_id, day)
+            );
             CREATE TABLE IF NOT EXISTS delivery_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 telegram_id INTEGER,
@@ -106,34 +121,89 @@ class Database:
         )
         exists = await cursor.fetchone()
         if exists:
-            await self._db.execute(
-                "DELETE FROM bookmarks WHERE telegram_id = ? AND content_id = ?",
-                (telegram_id, content_id),
-            )
+            await self._db.execute("DELETE FROM bookmarks WHERE telegram_id = ? AND content_id = ?", (telegram_id, content_id))
             saved = False
         else:
-            await self._db.execute(
-                "INSERT OR IGNORE INTO bookmarks (telegram_id, content_id) VALUES (?, ?)",
-                (telegram_id, content_id),
-            )
+            await self._db.execute("INSERT OR IGNORE INTO bookmarks (telegram_id, content_id) VALUES (?, ?)", (telegram_id, content_id))
             saved = True
         await self._db.commit()
         return saved
 
     async def get_bookmarks(self, telegram_id: int) -> list[str]:
         assert self._db is not None
+        cursor = await self._db.execute("SELECT content_id FROM bookmarks WHERE telegram_id = ? ORDER BY created_at DESC", (telegram_id,))
+        return [row["content_id"] for row in await cursor.fetchall()]
+
+    async def add_target(self, chat_id: int, title: str, chat_type: str) -> None:
+        assert self._db is not None
+        await self._db.execute(
+            """INSERT INTO publish_targets (chat_id, title, chat_type, enabled)
+               VALUES (?, ?, ?, 1)
+               ON CONFLICT(chat_id) DO UPDATE SET title=excluded.title, chat_type=excluded.chat_type, enabled=1""",
+            (chat_id, title, chat_type),
+        )
+        await self._db.commit()
+
+    async def remove_target(self, chat_id: int) -> bool:
+        assert self._db is not None
+        cursor = await self._db.execute("DELETE FROM publish_targets WHERE chat_id=?", (chat_id,))
+        await self._db.commit()
+        return cursor.rowcount > 0
+
+    async def list_targets(self) -> list[dict]:
+        assert self._db is not None
+        cursor = await self._db.execute("SELECT chat_id, title, chat_type, enabled FROM publish_targets ORDER BY title")
+        return [dict(row) for row in await cursor.fetchall()]
+
+    async def log_delivery(self, chat_id: int, kind: str, status: str, error_code: str | None = None) -> None:
+        assert self._db is not None
+        await self._db.execute(
+            "INSERT INTO delivery_logs (chat_id, kind, status, error_code) VALUES (?, ?, ?, ?)",
+            (chat_id, kind, status, error_code),
+        )
+        await self._db.commit()
+
+    async def record_game_answer(self, telegram_id: int, question_id: str, is_correct: bool) -> bool | None:
+        assert self._db is not None
         cursor = await self._db.execute(
-            "SELECT content_id FROM bookmarks WHERE telegram_id = ? ORDER BY created_at DESC",
+            """INSERT OR IGNORE INTO game_answers (telegram_id, question_id, day, is_correct)
+               VALUES (?, ?, date('now'), ?)""",
+            (telegram_id, question_id, int(is_correct)),
+        )
+        await self._db.commit()
+        if cursor.rowcount == 0:
+            return None
+        return is_correct
+
+    async def game_stats(self, telegram_id: int) -> dict[str, int]:
+        assert self._db is not None
+        cursor = await self._db.execute(
+            "SELECT COUNT(*) AS played, COALESCE(SUM(is_correct),0) AS correct FROM game_answers WHERE telegram_id=?",
             (telegram_id,),
         )
-        rows = await cursor.fetchall()
-        return [row["content_id"] for row in rows]
+        row = await cursor.fetchone()
+        return {"played": int(row["played"]), "correct": int(row["correct"])}
+
+    async def leaderboard(self, limit: int = 10) -> list[dict]:
+        assert self._db is not None
+        cursor = await self._db.execute(
+            """SELECT u.first_name, u.username, a.telegram_id,
+                      COUNT(*) AS played, SUM(a.is_correct) AS score
+               FROM game_answers a JOIN users u ON u.telegram_id=a.telegram_id
+               GROUP BY a.telegram_id
+               ORDER BY score DESC, played DESC LIMIT ?""",
+            (limit,),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
 
     async def stats(self) -> dict[str, int]:
         assert self._db is not None
         result: dict[str, int] = {}
-        for table, key in (("users", "users"), ("bookmarks", "bookmarks"), ("reminders", "reminders"), ("groups", "groups")):
+        for table, key in (
+            ("users", "users"), ("bookmarks", "bookmarks"),
+            ("reminders", "reminders"), ("groups", "groups"),
+            ("publish_targets", "targets"), ("game_answers", "game_answers"),
+        ):
             cursor = await self._db.execute(f"SELECT COUNT(*) AS n FROM {table}")
-            row = await cursor.fetchone()
-            result[key] = int(row["n"])
+            result[key] = int((await cursor.fetchone())["n"])
         return result

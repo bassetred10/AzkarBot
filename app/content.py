@@ -25,6 +25,8 @@ class ContentCatalogue:
                 raise ValueError(f"Unknown content category: {item['category']}")
             if item["id"] in seen_ids:
                 raise ValueError(f"Duplicate content id: {item['id']}")
+            if not item["source_url"].startswith("https://"):
+                raise ValueError(f"Source URL must use HTTPS: {item['id']}")
             seen_ids.add(item["id"])
         self._payload = payload
 
@@ -43,4 +45,9 @@ class ContentCatalogue:
         return [item for item in self.items if item["category"] == category_id]
 
     def public_payload(self) -> dict[str, Any]:
-        return {"categories": self.categories, "items": self.items}
+        # Keep internal source URLs in the catalogue; the interface shows clean source names and references.
+        public_items = [
+            {key: value for key, value in item.items() if key != "source_url"}
+            for item in self.items
+        ]
+        return {"categories": self.categories, "items": public_items}

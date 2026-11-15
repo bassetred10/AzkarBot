@@ -1,68 +1,54 @@
 # ATHAR | أَثَر
 
-A source-first Islamic companion for Telegram: authentic adhkar, hadith references, personal reminders, bookmarks, and a Telegram Mini App.
+An Arabic-first Islamic companion for Telegram with a polished bot menu, source-aware adhkar, learning games, leaderboards, personal bookmarks, and controlled channel/group publishing.
 
-## Current foundation
+## Features in this foundation
 
-- Modular Python application using python-telegram-bot.
-- FastAPI health endpoint and Telegram webhook receiver.
-- Polling mode for local development; webhook mode for a public host.
-- SQLite storage for users, preferences, bookmarks, reminders, groups, and delivery logs.
-- Source-aware Arabic adhkar catalogue. Every published item carries a reference and source URL.
-- Telegram Mini App shell with a responsive dark/emerald interface.
-- Secret configuration through environment variables only.
-- Basic automated tests and GitHub Actions.
+- Modular Telegram bot and FastAPI service.
+- Source-aware adhkar and hadith catalogue. The UI displays source names and reference numbers without exposing raw URLs in the reading flow.
+- Interactive Islamic knowledge quiz with one answer per user/question/day, personal scores, and leaderboard.
+- Automatic registration of groups when the bot is added.
+- Admin-only management panel, destination registration/removal, message broadcast, and quiz publishing.
+- Channel publishing requires the bot to be an administrator with posting permission.
+- Telegram Mini App shell.
+- SQLite storage, secret environment configuration, GitHub Actions checks, and Telegram Mini App initData verification.
 
-## Safety and content policy
+## Admin setup
 
-ATHAR must never invent a Qur'an verse, hadith, chain, grading, virtue, or scholarly ruling. New religious content must be checked against a named primary/reference source before publication. AI may assist with search and organization, but generated religious text is not published automatically.
+1. DM the bot with /myid and copy the numeric ID.
+2. Set ADMIN_IDS to that number in the host's environment (or local .env).
+3. Restart the service. Use /admin to open the private administration panel.
+4. Add the bot as an administrator in a channel or group. For channels, allow posting messages.
+5. Use /addtarget @channel to register a channel. Groups are registered automatically when the bot is added; /addtarget can also register them explicitly.
+6. Use /targets to review destinations and /deltarget CHAT_ID to remove one.
+7. To publish a post, send the content to the bot in a private chat, reply to that message with /publish. The bot copies it to registered destinations.
+8. Use /publishquiz to send an interactive question to all destinations.
 
-The first seed entries reference Sunan Abi Dawud 5068, Sahih al-Bukhari 6405, and Sahih Muslim 1884. The database stores source details separately from explanatory text. Explanations remain empty until reviewed and approved.
+## User commands
 
-## Requirements
+- /start — main menu
+- /quiz — a learning question
+- /leaderboard — quiz leaders
+- /myid — your Telegram numeric ID
+- /help — command guide
 
-- Python 3.12+
-- A Telegram bot token created with BotFather
-- Optional numeric Telegram admin IDs
-- Optional public service URL for webhook mode
+Quiz scoring is for learning and does not involve money, prizes, or wagering. Each user can answer a given question once per calendar day.
 
 ## Local setup
 
-1. Copy .env.example to .env.
-2. Set TELEGRAM_BOT_TOKEN in .env. Never commit .env.
-3. Install dependencies with pip install -r requirements.txt.
-4. Run python bot.py.
-5. Open the bot in Telegram and send /start.
+Copy .env.example to .env, set TELEGRAM_BOT_TOKEN and ADMIN_IDS, then:
 
-When WEBHOOK_BASE_URL is empty, the application uses long polling. The FastAPI server still serves the Mini App and health endpoint on port 8000.
+pip install -r requirements.txt
+python bot.py
 
-## Hosting
+Polling runs when WEBHOOK_BASE_URL is empty. The HTTP service listens on PORT (default 8000) and exposes /healthz and /miniapp.
 
-The application listens on the PORT environment variable (default 8000). Set TELEGRAM_BOT_TOKEN as a secret environment variable. To use webhooks, also set WEBHOOK_BASE_URL to the public HTTPS service URL and WEBHOOK_SECRET to a random secret of 32+ characters.
+## Security
 
-The default database is local SQLite. Free ephemeral hosting can erase local files during restarts or redeploys. Before a public launch, attach durable storage or migrate the database layer to managed PostgreSQL. Do not treat an ephemeral SQLite file as production persistence.
+Never commit .env. Rotate any Telegram token that has appeared in logs, screenshots, chats, or public repositories. HTTP client request logging is reduced to WARNING because Telegram API request paths contain the bot token.
 
-## Useful endpoints
+For a channel destination, the bot must be an administrator with can_post_messages permission. For groups, the bot must be allowed to send messages. Publishing is performed only to destinations explicitly registered by an administrator.
 
-- GET /healthz — process and database health.
-- GET /miniapp — Telegram Mini App.
-- GET /api/adhkar — requires valid Telegram Mini App initData authorization.
+## Persistence
 
-## Project layout
-
-- app/config.py — typed environment configuration.
-- app/database.py — SQLite persistence.
-- app/content.py — source-aware content catalogue.
-- app/handlers.py — Telegram commands and callback routes.
-- app/security.py — Telegram Mini App initData verification.
-- app/server.py — FastAPI lifecycle, webhook, API and static app.
-- miniapp/ — responsive Telegram Mini App.
-- data/adhkar.json — reviewed seed content.
-
-## Development checks
-
-Run python -m unittest discover -s tests -v and python -m compileall -q app bot.py.
-
-## Important
-
-The existing main branch is retained. Development for this foundation happens on athar-v2-foundation. Revoke any Telegram token that has ever been committed to a public repository, then issue a new token and put it only in the host's secret environment settings.
+SQLite is suitable for local testing. Use durable storage or managed PostgreSQL before public production hosting; ephemeral host filesystems may be reset.
