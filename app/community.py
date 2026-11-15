@@ -202,24 +202,24 @@ def _panel_keyboard(settings: dict[str, Any]) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 label("ذكر الصباح", settings["morning_enabled"]),
                 callback_data="community:toggle:morning",
-                style="success" if settings["morning_enabled"] else "secondary",
+                style="success" if settings["morning_enabled"] else None,
             ),
             InlineKeyboardButton(
                 label("ذكر المساء", settings["evening_enabled"]),
                 callback_data="community:toggle:evening",
-                style="success" if settings["evening_enabled"] else "secondary",
+                style="success" if settings["evening_enabled"] else None,
             ),
         ],
         [
             InlineKeyboardButton(
                 label("سؤال اليوم", settings["quiz_enabled"]),
                 callback_data="community:toggle:quiz",
-                style="success" if settings["quiz_enabled"] else "secondary",
+                style="success" if settings["quiz_enabled"] else None,
             ),
             InlineKeyboardButton(
                 label("ترحيب الأعضاء", settings["welcome_enabled"]),
                 callback_data="community:toggle:welcome",
-                style="success" if settings["welcome_enabled"] else "secondary",
+                style="success" if settings["welcome_enabled"] else None,
             ),
         ],
         [
