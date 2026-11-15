@@ -12,6 +12,11 @@ from app.content import ContentCatalogue
 from app.database import Database
 from app.games import GameCatalogue
 from app.handlers import register_handlers
+from app.live_games import (
+    LiveGameStore,
+    register_live_game_handlers,
+    restore_live_sessions,
+)
 from app.security import validate_telegram_init_data
 
 
@@ -33,6 +38,8 @@ async def lifespan(api: FastAPI):
     content.load()
     games = GameCatalogue()
     games.load()
+    live_store = LiveGameStore(db)
+    await live_store.initialize()
 
     telegram_app = (
         Application.builder()
@@ -44,8 +51,11 @@ async def lifespan(api: FastAPI):
         .build()
     )
     register_handlers(telegram_app, db, content, games, settings)
+    telegram_app.bot_data["live_store"] = live_store
+    register_live_game_handlers(telegram_app)
     await telegram_app.initialize()
     await telegram_app.start()
+    await restore_live_sessions(telegram_app)
 
     polling = not bool(settings.webhook_base_url)
     if polling:
@@ -63,6 +73,7 @@ async def lifespan(api: FastAPI):
     api.state.db = db
     api.state.content = content
     api.state.games = games
+    api.state.live_store = live_store
     api.state.telegram_app = telegram_app
     api.state.polling = polling
     yield
@@ -74,7 +85,7 @@ async def lifespan(api: FastAPI):
     await db.close()
 
 
-api = FastAPI(title="ATHAR API", version="0.2.0", lifespan=lifespan)
+api = FastAPI(title="ATHAR API", version="0.3.0", lifespan=lifespan)
 
 
 @api.get("/healthz")
