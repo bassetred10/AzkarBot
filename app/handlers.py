@@ -419,8 +419,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         text += "\n".join(f"• {t['title']} ({t['chat_type']})" for t in targets) if targets else "لا توجد وجهات بعد."
         text += "\n\nإضافة: /addtarget @channel\nحذف: /deltarget CHAT_ID"
     elif action == "quiz":
-        await query.edit_message_text("🎯 جاري نشر سؤال تفاعلي إلى وجهاتك…", reply_markup=admin_keyboard())
-        await publish_quiz_to_targets(context)
+        success, failed = await publish_quiz_to_targets(context)
+        text = f"🎯 تقرير نشر السؤال\n✅ وصل إلى: {success}\n⚠️ تعذّر: {failed}"
+        await query.edit_message_text(text, reply_markup=admin_keyboard())
         return
     else:
         text = (
