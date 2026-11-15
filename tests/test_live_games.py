@@ -83,6 +83,19 @@ class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
 
 
 
+    async def test_anonymous_poll_answers_are_not_assigned_to_a_user(self):
+        await self.store.register_poll(
+            "anonymous-poll", -100456, "q001", is_anonymous=True
+        )
+
+        recorded = await self.store.record_poll_answer(
+            "anonymous-poll", self.user.id, 0, True
+        )
+        rows = await self.store.channel_board()
+
+        self.assertFalse(recorded)
+        self.assertEqual(rows, [])
+
     async def test_category_is_persisted_for_group_session(self):
         await self.store.create_session(
             "sessiontopic", -100789, "Topic Group", 101, 4,
