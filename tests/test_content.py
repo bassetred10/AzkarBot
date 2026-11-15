@@ -32,15 +32,17 @@ class ContentCatalogueTests(unittest.TestCase):
         self.assertTrue(all(item["category"] in category_ids for item in catalogue.items))
 
 
-    def test_morning_and_evening_opening_remembrances_use_correct_wording(self):
+    def test_abu_dawud_5068_morning_and_evening_text_matches_reference(self):
         content = ContentCatalogue()
         content.load()
         morning = content.get("morning_001")
         evening = content.get("evening_001")
 
+        # Abu Dawud 5068 gives "wa ilayka al-nushur" for both timings.
         self.assertIn("وَإِلَيْكَ النُّشُورُ", morning["text"])
-        self.assertIn("وَإِلَيْكَ الْمَصِيرُ", evening["text"])
-        self.assertNotIn("النُّشُور", evening["text"])
+        self.assertIn("وَإِلَيْكَ النُّشُورُ", evening["text"])
+        self.assertEqual(morning["reference"], "5068")
+        self.assertEqual(evening["reference"], "5068")
 
 
 if __name__ == "__main__":
