@@ -39,6 +39,17 @@ Each registered channel has its own:
 
 Use /setchanneltime @channel morning 07:00 to change a channel schedule. The same command accepts evening, hadith, or quiz. Channel quizzes use anonymous Telegram polls; the bot reports aggregate vote and correct-answer counts without identifying voters.
 
+### Telegram Mini App
+
+The /miniapp experience includes:
+- An Arabic RTL home screen with a responsive emerald-and-gold visual system, subtle motion, and dark/light themes.
+- Category browsing, diacritics-aware search, progressive result loading, and detail views.
+- On-device saved items and an interactive dhikr counter. Saved items and counter progress stay on that device/browser and are not synced between devices.
+- Direct links to the source references already present in the content catalogue.
+- Telegram BackButton, haptic feedback, and mobile safe-area support when opened inside Telegram.
+
+The Mini App uses the same authenticated /api/adhkar endpoint. Open it from the bot; direct browser access without Telegram init data is intentionally rejected.
+
 ### Owner administration
 
 - /admin opens the owner dashboard.
