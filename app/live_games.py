@@ -716,7 +716,7 @@ async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "تبدأ 5 جولات، لكل جولة 25 ثانية، مع نقاط للسرعة والإجابة الصحيحة.\n\n"
         "📣 تحديات القنوات: تنشر الإدارة مسابقات Telegram Quiz أصلية "
         "بوقت تصويت ونتائج قابلة للإحصاء.\n\n"
-        "🏆 /gameboard — ترتيب المجموعة أو الترتيب العام\n"
+        "🏆 /gameboard — ترتيب المجموعة\n🌍 /liveboard — الترتيب العام للمنافسات والقنوات\n"
         "⏹ /endgame — إيقاف المنافسة (للبادئ أو مشرفي المجموعة)"
     )
     keyboard = InlineKeyboardMarkup([
@@ -762,6 +762,215 @@ def register_live_game_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("gameboard", group_board_command))
     application.add_handler(CommandHandler("channelquiz", channel_quiz_command))
     application.add_handler(CommandHandler("channelboard", channel_board_command))
+    application.add_handler(CommandHandler("liveboard", liveboard_command))
+    application.add_handler(CommandHandler("publishlivequiz", publish_live_quiz_command))
+    application.add_handler(CallbackQueryHandler(live_admin_stats_callback, pattern=r"^adm:stats$"), group=-1)
+    application.add_handler(CallbackQueryHandler(live_admin_publish_callback, pattern=r"^adm:quiz$"), group=-1)
     application.add_handler(CallbackQueryHandler(live_answer_callback, pattern=r"^lg:"))
     application.add_handler(CallbackQueryHandler(solo_quiz_callback, pattern=r"^live:solo$"))
     application.add_handler(PollAnswerHandler(poll_answer_handler))
+
+
+async def _publish_native_quiz_targets(
+    context: ContextTypes.DEFAULT_TYPE,
+    channel_only: bool = False,
+) -> tuple[int, int]:
+    db: Database = context.application.bot_data["db"]
+    store: LiveGameStore = _store(context)
+    targets = await db.list_targets()
+    if channel_only:
+        targets = [target for target in targets if target["chat_type"] == "channel"]
+    question = _games(context).random_question()
+    sent = failed = 0
+    for target in targets:
+        try:
+            poll_message = await context.bot.send_poll(
+                chat_id=target["chat_id"],
+                question=question["question"][:300],
+                options=[str(option)[:100] for option in question["options"][:10]],
+                is_anonymous=False,
+                type="quiz",
+                correct_option_ids=[question["answer"]],
+                explanation=(question.get("explanation") or "أحسنت على المشاركة.")[:200],
+                open_period=90,
+                hide_results_until_closes=True,
+            )
+            if poll_message.poll:
+                await store.register_poll(
+                    poll_message.poll.id, target["chat_id"], question["id"]
+                )
+            await db.log_delivery(target["chat_id"], "native_quiz", "sent")
+            sent += 1
+        except TelegramError as exc:
+            logger.warning("Native quiz delivery failed for %s: %s", target["chat_id"], exc)
+            await db.log_delivery(
+                target["chat_id"], "native_quiz", "failed", type(exc).__name__
+            )
+            failed += 1
+    return sent, failed
+
+
+async def publish_live_quiz_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    user, message = update.effective_user, update.effective_message
+    settings = context.application.bot_data["settings"]
+    if not user or not message:
+        return
+    if user.id not in settings.admin_ids:
+        await message.reply_text("هذا الأمر مخصص لإدارة أَثَر.")
+        return
+    sent, failed = await _publish_native_quiz_targets(context)
+    await message.reply_text(
+        f"🎯 تقرير نشر المسابقة\n✅ أُرسلت إلى: {sent}\n⚠️ تعذّر: {failed}"
+        "\nالتصويت مفتوح 90 ثانية، وتُجمع نتائج المشاركين تلقائياً."
+    )
+
+
+async def liveboard_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if not update.effective_message:
+        return
+    store = _store(context)
+    cursor = await store.conn.execute(
+        """SELECT u.telegram_id, u.first_name, u.username,
+                  SUM(scores.points) AS score,
+                  SUM(scores.is_correct) AS correct,
+                  COUNT(*) AS answered
+           FROM (
+               SELECT telegram_id, points, is_correct FROM live_game_answers
+               UNION ALL
+               SELECT telegram_id, points, is_correct FROM channel_quiz_answers
+           ) AS scores
+           JOIN users u ON u.telegram_id=scores.telegram_id
+           GROUP BY u.telegram_id
+           ORDER BY score DESC, correct DESC, answered DESC, u.telegram_id
+           LIMIT 10"""
+    )
+    rows = [dict(row) for row in await cursor.fetchall()]
+    await update.effective_message.reply_text(
+        _board_text(rows, "🌍 الترتيب العام — ساحة أَثَر")
+    )
+
+
+async def _live_stats(store: LiveGameStore) -> dict[str, int]:
+    stats = {}
+    queries = {
+        "sessions": "SELECT COUNT(*) AS n FROM live_game_sessions",
+        "active": "SELECT COUNT(*) AS n FROM live_game_sessions WHERE status='active'",
+        "group_answers": "SELECT COUNT(*) AS n FROM live_game_answers",
+        "polls": "SELECT COUNT(*) AS n FROM channel_quiz_polls",
+        "poll_answers": "SELECT COUNT(*) AS n FROM channel_quiz_answers",
+    }
+    for key, sql in queries.items():
+        cursor = await store.conn.execute(sql)
+        stats[key] = int((await cursor.fetchone())["n"])
+    return stats
+
+
+async def live_admin_stats_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.from_user:
+        return
+    settings = context.application.bot_data["settings"]
+    if query.from_user.id not in settings.admin_ids:
+        await query.answer("غير مصرح لك بالدخول.", show_alert=True)
+        raise ApplicationHandlerStop
+    await query.answer()
+    store = _store(context)
+    stats = await _live_stats(store)
+    db_stats = await context.application.bot_data["db"].stats()
+    text = (
+        "📈 إحصائيات أَثَر — لوحة الإدارة\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"👤 المستخدمون: {db_stats['users']}\n"
+        f"⭐ المحفوظات: {db_stats['bookmarks']}\n"
+        f"📢 وجهات النشر: {db_stats['targets']}\n"
+        f"🎮 المنافسات الجماعية: {stats['sessions']}\n"
+        f"🟢 منافسات نشطة الآن: {stats['active']}\n"
+        f"🗳 إجابات الجولات: {stats['group_answers']}\n"
+        f"📣 اختبارات القنوات المنشورة: {stats['polls']}\n"
+        f"👥 أصوات اختبارات القنوات: {stats['poll_answers']}\n"
+        f"🧠 إجابات الأسئلة الفردية: {db_stats['game_answers']}"
+    )
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 وجهات النشر", callback_data="adm:targets")],
+        [InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="adm:help")],
+    ])
+    try:
+        await query.edit_message_text(text, reply_markup=keyboard)
+    except BadRequest as exc:
+        if "Message is not modified" not in str(exc):
+            raise
+    raise ApplicationHandlerStop
+
+
+async def live_admin_publish_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.from_user:
+        return
+    settings = context.application.bot_data["settings"]
+    if query.from_user.id not in settings.admin_ids:
+        await query.answer("غير مصرح لك بالنشر.", show_alert=True)
+        raise ApplicationHandlerStop
+    await query.answer("جارٍ نشر الاختبار...")
+    sent, failed = await _publish_native_quiz_targets(context)
+    text = (
+        "📣 تقرير نشر الاختبار التفاعلي\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"✅ أُرسل إلى: {sent}\n"
+        f"⚠️ تعذّر: {failed}\n"
+        "⏳ مدة التصويت: 90 ثانية\n"
+        "📊 تُجمع الإجابات المسجلة تلقائياً."
+    )
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📈 تحديث الإحصائيات", callback_data="adm:stats")],
+                [InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="adm:help")],
+            ]),
+        )
+    except BadRequest as exc:
+        if "Message is not modified" not in str(exc):
+            raise
+    raise ApplicationHandlerStop
+
+
+async def live_admin_stats_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query:
+        return
+    # The authorization check and render logic are shared with the callback above.
+    await query.answer()
+    store = _store(context)
+    stats = await _live_stats(store)
+    db_stats = await context.application.bot_data["db"].stats()
+    settings = context.application.bot_data["settings"]
+    if not query.from_user or query.from_user.id not in settings.admin_ids:
+        await query.answer("غير مصرح لك بالدخول.", show_alert=True)
+        raise ApplicationHandlerStop
+    text = (
+        "📈 إحصائيات أَثَر — لوحة الإدارة\n━━━━━━━━━━━━━━━━━━\n"
+        f"👤 المستخدمون: {db_stats['users']}\n"
+        f"⭐ المحفوظات: {db_stats['bookmarks']}\n"
+        f"📢 وجهات النشر: {db_stats['targets']}\n"
+        f"🎮 المنافسات الجماعية: {stats['sessions']}\n"
+        f"🟢 نشطة الآن: {stats['active']}\n"
+        f"🗳 إجابات الجولات: {stats['group_answers']}\n"
+        f"📣 اختبارات القنوات: {stats['polls']}\n"
+        f"👥 أصوات القنوات: {stats['poll_answers']}\n"
+        f"🧠 إجابات فردية: {db_stats['game_answers']}"
+    )
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 وجهات النشر", callback_data="adm:targets")],
+        [InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="adm:help")],
+    ]))
+    raise ApplicationHandlerStop
