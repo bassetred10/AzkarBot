@@ -1001,56 +1001,39 @@ async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not query or not query.message:
         return
     await query.answer()
-    chat_type = query.message.chat.type
+    is_group = query.message.chat.type in ("group", "supergroup")
     text = (
-        "🎮 ساحة أَثَر | مركز الألعاب\n"
+        "🎮 أَثَر | ساحة التحدّي\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "اختر الباب الذي تحب اختباره. كل سؤال يعرض تفسيراً ومصدراً بعد الإجابة.\n\n"
-        "⚡ المنافسة الجماعية: ابدأ /livegame أو اختر باباً من أزرار البطولة. "
-        "5 جولات، 25 ثانية لكل جولة، ونقاط سرعة وترتيب مستقل للمجموعة.\n"
-        "✅ صح أم خطأ: /truefalse\n"
-        "📊 ترتيب المجموعة: /gameboard · الترتيب العام: /liveboard\n"
-        "🎯 أوقف البطولة: /endgame"
+        "اختر طريقة اللعب، ثم اختر الباب إن رغبت. بعد كل سؤال تظهر الإجابة وشرحها ومرجعها.\n\n"
+        "🎯 الفردي: سؤال واحد من دون مؤقّت.\n"
+        "✅ صح أم خطأ: اختبار سريع بتصويت تيليجرام."
     )
     rows = [
-        [InlineKeyboardButton("🎯 سؤال عشوائي", callback_data="live:solo:all", style="success")],
         [
-            InlineKeyboardButton("📖 القرآن", callback_data="live:solo:quran"),
-            InlineKeyboardButton("🕌 السيرة", callback_data="live:solo:seerah"),
+            InlineKeyboardButton("🎯 سؤال فردي عشوائي", callback_data="live:solo:all", style="success"),
+            InlineKeyboardButton("✅ صح أم خطأ", callback_data="live:truefalse:all"),
         ],
-        [
-            InlineKeyboardButton("📜 الحديث", callback_data="live:solo:hadith"),
-            InlineKeyboardButton("🌟 الأنبياء", callback_data="live:solo:prophets"),
-        ],
-        [
-            InlineKeyboardButton("🤲 العبادات", callback_data="live:solo:worship"),
-            InlineKeyboardButton("🛡️ الصحابة", callback_data="live:solo:companions"),
-        ],
-        [InlineKeyboardButton("🌿 الأخلاق والآداب", callback_data="live:solo:manners")],
-        [InlineKeyboardButton("✅ صح أم خطأ", callback_data="live:truefalse:all", style="success")],
+        [InlineKeyboardButton("📚 اختر باب السؤال الفردي", callback_data="topics:solo")],
     ]
-    if chat_type in ("group", "supergroup"):
+    if is_group:
+        text += (
+            "\n\n🏁 البطولة: خمس جولات، 25 ثانية لكل جولة.\n"
+            "⚡ سباق السرعة: خمس جولات، 12 ثانية لكل جولة.\n"
+            "النقاط والترتيب يُحسبان لهذه المجموعة."
+        )
         rows.extend([
-            [InlineKeyboardButton("🏁 بطولة المجموعة · كل الأبواب", callback_data="arena:start:all", style="success")],
-        [InlineKeyboardButton("⚡ سباق السرعة · 12 ثانية", callback_data="arena:speed:all", style="success")],
             [
-                InlineKeyboardButton("بطولة القرآن", callback_data="arena:start:quran"),
-                InlineKeyboardButton("بطولة السيرة", callback_data="arena:start:seerah"),
+                InlineKeyboardButton("🏁 بطولة المجموعة", callback_data="arena:start:all", style="success"),
+                InlineKeyboardButton("⚡ سباق السرعة", callback_data="arena:speed:all", style="primary"),
             ],
-            [
-                InlineKeyboardButton("بطولة الحديث", callback_data="arena:start:hadith"),
-                InlineKeyboardButton("بطولة العبادات", callback_data="arena:start:worship"),
-            ],
-            [
-                InlineKeyboardButton("بطولة الأنبياء", callback_data="arena:start:prophets"),
-                InlineKeyboardButton("بطولة الصحابة", callback_data="arena:start:companions"),
-            ],
-            [InlineKeyboardButton("بطولة الأخلاق", callback_data="arena:start:manners")],
+            [InlineKeyboardButton("🧭 اختر باب البطولة", callback_data="topics:arena")],
+            [InlineKeyboardButton("🏆 ترتيب هذه المجموعة", callback_data="leaderboard")],
+            [InlineKeyboardButton("🛑 إنهاء البطولة الحالية", callback_data="game:end")],
         ])
-    rows.extend([
-        [InlineKeyboardButton("🏆 لوحة المتصدرين", callback_data="leaderboard", style="primary")],
-        [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
-    ])
+    else:
+        rows.append([InlineKeyboardButton("🌍 لوحة المتصدرين", callback_data="leaderboard")])
+    rows.append([InlineKeyboardButton("🏠 الرئيسية", callback_data="home")])
     try:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
     except BadRequest as exc:
@@ -1058,6 +1041,85 @@ async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             raise
     raise ApplicationHandlerStop
 
+
+async def game_topics_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.message:
+        return
+    mode = query.data.split(":", 1)[1]
+    is_group = query.message.chat.type in ("group", "supergroup")
+    if mode == "arena" and not is_group:
+        await query.answer("البطولات متاحة داخل المجموعات فقط.", show_alert=True)
+        return
+    if mode not in ("solo", "arena"):
+        await query.answer("هذا القسم غير متاح.", show_alert=True)
+        return
+    text = (
+        "🧭 اختر باب التحدّي\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "كل باب يختار أسئلته من مجموعته الخاصة."
+    )
+    callback_prefix = "live:solo:" if mode == "solo" else "arena:start:"
+    labels = [
+        ("quran", "📖 القرآن الكريم"),
+        ("seerah", "🕌 السيرة النبوية"),
+        ("hadith", "📜 الحديث النبوي"),
+        ("prophets", "🌟 قصص الأنبياء"),
+        ("worship", "🤲 العبادات"),
+        ("companions", "🛡️ الصحابة"),
+        ("manners", "🌿 الأخلاق والآداب"),
+    ]
+    rows = []
+    for index in range(0, len(labels), 2):
+        rows.append([
+            InlineKeyboardButton(title, callback_data=callback_prefix + key)
+            for key, title in labels[index:index + 2]
+        ])
+    rows.append([InlineKeyboardButton("↩️ رجوع إلى ساحة التحدّي", callback_data="game")])
+    await query.answer()
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
+    raise ApplicationHandlerStop
+
+
+async def end_live_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.message or not query.from_user:
+        return
+    chat = query.message.chat
+    if chat.type not in ("group", "supergroup"):
+        await query.answer("هذا الإجراء متاح داخل المجموعة.", show_alert=True)
+        return
+    store = _store(context)
+    session = await store.active_for_chat(chat.id)
+    if not session:
+        await query.answer("لا توجد بطولة نشطة حالياً.", show_alert=True)
+        return
+    user = query.from_user
+    settings = context.application.bot_data.get("settings")
+    allowed = user.id == session["owner_id"] or (
+        settings is not None and user.id in settings.admin_ids
+    )
+    if not allowed:
+        try:
+            member = await context.bot.get_chat_member(chat.id, user.id)
+            allowed = member.status in ("administrator", "creator")
+        except TelegramError:
+            allowed = False
+    if not allowed:
+        await query.answer("إيقاف البطولة متاح لمن بدأها أو لمشرفي المجموعة.", show_alert=True)
+        return
+    await query.answer("جارٍ إنهاء البطولة...")
+    question = _games(context).get(session["question_id"])
+    stats = await store.round_stats(session["session_id"], session["current_round"])
+    await store.finish_session(session["session_id"], "cancelled")
+    _cancel_round_jobs(context.application, session["session_id"])
+    board = await store.session_board(session["session_id"], 10)
+    summary = "🛑 أُوقفت البطولة قبل اكتمالها."
+    if question:
+        summary += "\n" + _result_intro(question, stats)
+    summary += "\n\n" + _board_text(board, "الترتيب حتى الآن")
+    await _safe_edit(context.application, session, summary[:3900], None)
+    await query.message.reply_text("تم إيقاف البطولة.");
 
 async def solo_quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1339,6 +1401,7 @@ def register_live_game_handlers(application: Application) -> None:
         CallbackQueryHandler(game_menu_callback, pattern=r"^game$"),
         group=-1,
     )
+    application.add_handler(CallbackQueryHandler(game_topics_callback, pattern=r"^topics:(solo|arena)$"))
     application.add_handler(
         CallbackQueryHandler(live_leaderboard_callback, pattern=r"^leaderboard$"),
         group=-1,
@@ -1354,6 +1417,7 @@ def register_live_game_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("mannersgame", make_category_command("manners")))
     application.add_handler(CommandHandler("truefalse", true_false_command))
     application.add_handler(CommandHandler("endgame", end_live_game_command))
+    application.add_handler(CallbackQueryHandler(end_live_game_callback, pattern=r"^game:end$"))
     application.add_handler(CommandHandler("gameboard", group_board_command))
     application.add_handler(CommandHandler("channelquiz", channel_quiz_command))
     application.add_handler(CommandHandler("channelboard", channel_board_command))
