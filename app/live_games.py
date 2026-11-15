@@ -1308,6 +1308,7 @@ async def _live_stats(store: LiveGameStore) -> dict[str, int]:
         "auto_morning": "SELECT COALESCE(SUM(morning_enabled), 0) AS n FROM community_settings",
         "auto_evening": "SELECT COALESCE(SUM(evening_enabled), 0) AS n FROM community_settings",
         "auto_quiz": "SELECT COALESCE(SUM(quiz_enabled), 0) AS n FROM community_settings",
+        "auto_hadith": "SELECT COALESCE(SUM(hadith_enabled), 0) AS n FROM community_settings",
         "deliveries_7d": "SELECT COUNT(*) AS n FROM delivery_logs WHERE created_at >= datetime('now', '-7 days')",
         "failed_7d": "SELECT COUNT(*) AS n FROM delivery_logs WHERE status='failed' AND created_at >= datetime('now', '-7 days')",
     }
@@ -1348,6 +1349,7 @@ async def live_admin_stats_callback(
         f"☀️ جداول أذكار الصباح: {stats['auto_morning']}\n"
         f"🌙 جداول أذكار المساء: {stats['auto_evening']}\n"
         f"🎯 جداول سؤال اليوم: {stats['auto_quiz']}\n"
+        f"📜 جداول حديث اليوم: {stats['auto_hadith']}\n"
         f"📬 عمليات نشر آخر 7 أيام: {stats['deliveries_7d']}\n"
         f"⚠️ إخفاقات آخر 7 أيام: {stats['failed_7d']}"
     )
