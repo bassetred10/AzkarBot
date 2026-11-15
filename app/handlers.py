@@ -617,7 +617,7 @@ async def on_bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 await community.deactivate_group(chat.id)
             queue = context.application.job_queue
             if queue:
-                for kind in ("morning", "evening", "quiz"):
+                for kind in ("morning", "evening", "quiz", "hadith"):
                     for job in queue.get_jobs_by_name(f"athar-community:{chat.id}:{kind}"):
                         job.schedule_removal()
 
