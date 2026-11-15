@@ -625,13 +625,33 @@ async def community_callback(
         await query.answer()
         await _refresh_panel(query, context, chat.id)
         return
+    if action == "section" and len(parts) == 3:
+        section = parts[2]
+        if section not in ("schedule", "publish"):
+            await query.answer("هذا القسم غير متاح.", show_alert=True)
+            return
+        config = await _store(context).get(chat.id)
+        await query.answer()
+        await query.edit_message_text(
+            _section_text(config, section),
+            reply_markup=_section_keyboard(config, section),
+            disable_web_page_preview=True,
+        )
+        return
     if action == "toggle" and len(parts) == 3:
         kind = parts[2]
         config = await _store(context).toggle(chat.id, kind, query.from_user.id)
         if kind in SCHEDULES:
             await _reschedule_group(context.application, chat.id, config)
         await query.answer("تم تحديث إعداد المجموعة.")
-        await _refresh_panel(query, context, chat.id)
+        if kind in SCHEDULES:
+            await query.edit_message_text(
+                _section_text(config, "schedule"),
+                reply_markup=_section_keyboard(config, "schedule"),
+                disable_web_page_preview=True,
+            )
+        else:
+            await _refresh_panel(query, context, chat.id)
         return
     if action == "post" and len(parts) == 3:
         kind = parts[2]
