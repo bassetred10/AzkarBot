@@ -32,6 +32,7 @@ def home_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⭐ محفوظاتي", callback_data="bookmarks"),
             InlineKeyboardButton("🌿 مكتبتي", callback_data="miniapp"),
         ],
+        [InlineKeyboardButton("🏘 مركز تحكم المجموعة", callback_data="community:open", style="primary")],
         [InlineKeyboardButton("📊 نقاطي", callback_data="my_score", style="primary"),
          InlineKeyboardButton("ℹ️ عن أَثَر", callback_data="about")],
     ])
