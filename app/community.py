@@ -95,6 +95,17 @@ class CommunityStore:
         )
         return [dict(row) for row in await cursor.fetchall()]
 
+    async def deactivate_group(self, chat_id: int) -> None:
+        await self.conn.execute(
+            """UPDATE community_settings
+               SET morning_enabled=0, evening_enabled=0,
+                   quiz_enabled=0, welcome_enabled=0,
+                   updated_at=CURRENT_TIMESTAMP
+               WHERE chat_id=?""",
+            (chat_id,),
+        )
+        await self.conn.commit()
+
     async def toggle(self, chat_id: int, key: str, actor_id: int) -> dict[str, Any]:
         allowed = {
             "morning": "morning_enabled",
@@ -300,9 +311,6 @@ async def _send_dhikr(
     await context.bot.send_message(
         chat_id=chat_id,
         text="\n".join(lines),
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📿 أذكار أكثر", callback_data="home")]
-        ]),
         disable_web_page_preview=True,
     )
     return True
