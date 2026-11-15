@@ -4,12 +4,14 @@
   "categories": [
     {"id": "morning", "title": "أذكار الصباح", "icon": "☀️"},
     {"id": "evening", "title": "أذكار المساء", "icon": "🌙"},
-    {"id": "general", "title": "أذكار متنوعة", "icon": "📿"}
+    {"id": "general", "title": "أذكار متنوعة", "icon": "📿"},
+    {"id": "hadith", "title": "حديث نبوي", "icon": "📜"}
   ],
   "items": [
     {
       "id": "morning_001",
       "category": "morning",
+      "type": "dhikr",
       "title": "ذكر الصباح",
       "text": "اللَّهُمَّ بِكَ أَصْبَحْنَا، وَبِكَ أَمْسَيْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ، وَإِلَيْكَ النُّشُورُ.",
       "repeat": 1,
@@ -24,6 +26,7 @@
     {
       "id": "evening_001",
       "category": "evening",
+      "type": "dhikr",
       "title": "ذكر المساء",
       "text": "اللَّهُمَّ بِكَ أَمْسَيْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ، وَإِلَيْكَ النُّشُورُ.",
       "repeat": 1,
@@ -38,6 +41,7 @@
     {
       "id": "general_001",
       "category": "general",
+      "type": "dhikr",
       "title": "التسبيح",
       "text": "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ.",
       "repeat": 100,
@@ -51,16 +55,17 @@
       "review_status": "source_checked"
     },
     {
-      "id": "general_002",
-      "category": "general",
-      "title": "الرضا بالله رباً",
-      "text": "رَضِيتُ بِاللَّهِ رَبًّا، وَبِالْإِسْلَامِ دِينًا، وَبِمُحَمَّدٍ نَبِيًّا.",
-      "repeat": 1,
+      "id": "hadith_001",
+      "category": "hadith",
+      "type": "hadith",
+      "title": "فضل الرضا بالله رباً",
+      "text": "يَا أَبَا سَعِيدٍ، مَنْ رَضِيَ بِاللَّهِ رَبًّا، وَبِالْإِسْلَامِ دِينًا، وَبِمُحَمَّدٍ نَبِيًّا، وَجَبَتْ لَهُ الْجَنَّةُ.",
+      "repeat": null,
       "narrator": "أبو سعيد الخدري رضي الله عنه",
       "source": "صحيح مسلم",
       "reference": "1884",
       "grading": "صحيح",
-      "source_url": "https://sunnah.global/hadeeth/ar/show/65906",
+      "source_url": "https://dorar.net/h/CbRAusq8/osoul",
       "explanation": null,
       "review_status": "source_checked"
     }
