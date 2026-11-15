@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 import random
 import re
-from datetime import time as day_time
+from datetime import time as day_time, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import TelegramError
@@ -33,6 +33,19 @@ SCHEDULES = {
     "hadith": ("hadith_enabled", "hadith_time", "📜 حديث اليوم", "14:00"),
 }
 TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def _get_timezone(name: str):
+    """Resolve IANA zones, with a safe fixed-offset fallback for Algeria on Termux."""
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        if name == DEFAULT_TIMEZONE:
+            # Algeria uses UTC+01:00 year-round. This keeps schedules functional
+            # on Android/Termux installations that omit the system tz database.
+            logger.warning("IANA timezone database missing; using fixed UTC+01:00 for Algeria")
+            return timezone(timedelta(hours=1), name="Africa/Algiers")
+        raise
 
 
 class CommunityStore:
@@ -348,7 +361,7 @@ async def _reschedule_group(
         if not config[enabled_key]:
             continue
         hour, minute = map(int, config[time_key].split(":"))
-        timezone = ZoneInfo(config.get("timezone") or DEFAULT_TIMEZONE)
+        timezone = _get_timezone(config.get("timezone") or DEFAULT_TIMEZONE)
         queue.run_daily(
             scheduled_community_post,
             time=day_time(hour=hour, minute=minute, tzinfo=timezone),
