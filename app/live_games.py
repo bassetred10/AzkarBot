@@ -1007,31 +1007,57 @@ async def channel_board_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    if not query:
+    if not query or not query.message:
         return
     await query.answer()
+    chat_type = query.message.chat.type
     text = (
-        "🎮 ساحة أَثَر — لعب وتعلّم\n"
+        "🎮 ساحة أَثَر | مركز الألعاب\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "⚡ تحدٍ فردي: أرسل /quiz في الخاص.\n\n"
-        "👥 منافسة المجموعات: أضف البوت إلى مجموعتك ثم اكتب /livegame. "
-        "تبدأ 5 جولات، لكل جولة 25 ثانية، مع نقاط للسرعة والإجابة الصحيحة.\n\n"
-        "📣 تحديات القنوات: اختبارات Telegram Quiz بتصويت مجهول وإحصاءات إجمالية؛ "
-        "في المجموعات تُسجّل نقاط كل لاعب باسمه.\n\n"
-        "🏆 /gameboard — ترتيب المجموعة\n🌍 /liveboard — ترتيب منافسات المجموعات\n"
-        "⏹ /endgame — إيقاف المنافسة (للبادئ أو مشرفي المجموعة)"
+        "اختر الباب الذي تحب اختباره. كل سؤال يعرض تفسيراً ومصدراً بعد الإجابة.\n\n"
+        "⚡ المنافسة الجماعية: ابدأ /livegame أو اختر باباً من أزرار البطولة. "
+        "5 جولات، 25 ثانية لكل جولة، ونقاط سرعة وترتيب مستقل للمجموعة.\n"
+        "✅ صح أم خطأ: /truefalse\n"
+        "📊 ترتيب المجموعة: /gameboard · الترتيب العام: /liveboard\n"
+        "🎯 أوقف البطولة: /endgame"
     )
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎯 سؤال فردي", callback_data="live:solo", style="success")],
-        [InlineKeyboardButton("🏆 الترتيب العام", callback_data="leaderboard", style="primary")],
+    rows = [
+        [InlineKeyboardButton("🎯 سؤال عشوائي", callback_data="live:solo:all", style="success")],
+        [
+            InlineKeyboardButton("📖 القرآن", callback_data="live:solo:quran"),
+            InlineKeyboardButton("🕌 السيرة", callback_data="live:solo:seerah"),
+        ],
+        [
+            InlineKeyboardButton("📜 الحديث", callback_data="live:solo:hadith"),
+            InlineKeyboardButton("🌟 الأنبياء", callback_data="live:solo:prophets"),
+        ],
+        [
+            InlineKeyboardButton("🤲 العبادات", callback_data="live:solo:worship"),
+            InlineKeyboardButton("🛡️ الصحابة", callback_data="live:solo:companions"),
+        ],
+        [InlineKeyboardButton("🌿 الأخلاق والآداب", callback_data="live:solo:manners")],
+    ]
+    if chat_type in ("group", "supergroup"):
+        rows.extend([
+            [InlineKeyboardButton("🏁 بطولة المجموعة · كل الأبواب", callback_data="arena:start:all", style="success")],
+            [
+                InlineKeyboardButton("بطولة القرآن", callback_data="arena:start:quran"),
+                InlineKeyboardButton("بطولة السيرة", callback_data="arena:start:seerah"),
+            ],
+            [
+                InlineKeyboardButton("بطولة الحديث", callback_data="arena:start:hadith"),
+                InlineKeyboardButton("بطولة العبادات", callback_data="arena:start:worship"),
+            ],
+        ])
+    rows.extend([
+        [InlineKeyboardButton("🏆 لوحة المتصدرين", callback_data="leaderboard", style="primary")],
         [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
     ])
     try:
-        await query.edit_message_text(text, reply_markup=keyboard)
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
     except BadRequest as exc:
         if "Message is not modified" not in str(exc):
             raise
-    # Prevent the legacy game-menu handler from replacing the upgraded arena screen.
     raise ApplicationHandlerStop
 
 
@@ -1040,7 +1066,13 @@ async def solo_quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not query or not query.message:
         return
     await query.answer()
-    question = _games(context).random_question()
+    parts = query.data.split(":")
+    category_id = parts[2] if len(parts) > 2 else "all"
+    if category_id != "all" and category_id not in CATEGORY_LABELS:
+        await query.answer("هذا الباب غير متاح.", show_alert=True)
+        return
+    question = _games(context).random_question(category_id)
+    topic = "عام" if category_id == "all" else CATEGORY_LABELS[category_id]
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(
             option,
@@ -1051,7 +1083,7 @@ async def solo_quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     ])
     await context.bot.send_message(
         chat_id=query.message.chat_id,
-        text="🎯 تحدي أَثَر\n━━━━━━━━━━━━━━━━━━\n"
+        text=f"🎯 تحدي أَثَر · {topic}\n━━━━━━━━━━━━━━━━━━\n"
         + question["question"] + "\n\nاختر الإجابة الصحيحة:",
         reply_markup=keyboard,
     )
@@ -1064,6 +1096,14 @@ def register_live_game_handlers(application: Application) -> None:
         group=-1,
     )
     application.add_handler(CommandHandler("livegame", live_game_command))
+    application.add_handler(CommandHandler("sirahgame", make_category_command("seerah")))
+    application.add_handler(CommandHandler("qurangame", make_category_command("quran")))
+    application.add_handler(CommandHandler("hadithgame", make_category_command("hadith")))
+    application.add_handler(CommandHandler("prophetsgame", make_category_command("prophets")))
+    application.add_handler(CommandHandler("worshipgame", make_category_command("worship")))
+    application.add_handler(CommandHandler("companionsgame", make_category_command("companions")))
+    application.add_handler(CommandHandler("mannersgame", make_category_command("manners")))
+    application.add_handler(CommandHandler("truefalse", true_false_command))
     application.add_handler(CommandHandler("endgame", end_live_game_command))
     application.add_handler(CommandHandler("gameboard", group_board_command))
     application.add_handler(CommandHandler("channelquiz", channel_quiz_command))
@@ -1074,8 +1114,9 @@ def register_live_game_handlers(application: Application) -> None:
     application.add_handler(CallbackQueryHandler(live_admin_publish_callback, pattern=r"^adm:quiz$"), group=-1)
     application.add_handler(CommandHandler("help", enhanced_help_command), group=-1)
     application.add_handler(CallbackQueryHandler(enhanced_admin_help_callback, pattern=r"^adm:help$"), group=-1)
+    application.add_handler(CallbackQueryHandler(start_live_category_callback, pattern=r"^arena:start:"))
     application.add_handler(CallbackQueryHandler(live_answer_callback, pattern=r"^lg:"))
-    application.add_handler(CallbackQueryHandler(solo_quiz_callback, pattern=r"^live:solo$"))
+    application.add_handler(CallbackQueryHandler(solo_quiz_callback, pattern=r"^live:solo(?::|$)"))
     application.add_handler(PollAnswerHandler(poll_answer_handler))
     application.add_handler(PollHandler(poll_state_handler))
 
