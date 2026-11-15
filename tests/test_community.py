@@ -1,6 +1,7 @@
 import unittest
+from types import SimpleNamespace
 
-from app.community import CommunityStore
+from app.community import CommunityStore, _send_community_quiz
 from app.database import Database
 
 
@@ -82,6 +83,64 @@ class CommunityStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first["failed"], 1)
         self.assertEqual(second["sent"], 0)
         self.assertEqual(second["failed"], 0)
+
+
+class _FakeQuizBot:
+    def __init__(self, chat_type):
+        self.chat_type = chat_type
+        self.poll_kwargs = None
+
+    async def get_chat(self, chat_id):
+        return SimpleNamespace(type=self.chat_type)
+
+    async def send_poll(self, **kwargs):
+        self.poll_kwargs = kwargs
+        return SimpleNamespace(poll=SimpleNamespace(id="poll-test-001"))
+
+
+class _FakeLiveStore:
+    def __init__(self):
+        self.registered = []
+
+    async def register_poll(self, poll_id, chat_id, question_id, is_anonymous=False):
+        self.registered.append((poll_id, chat_id, question_id, is_anonymous))
+
+
+class CommunityQuizDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    def _context(self, chat_type):
+        bot = _FakeQuizBot(chat_type)
+        live_store = _FakeLiveStore()
+        games = SimpleNamespace(random_question=lambda: {
+            "id": "q-test",
+            "question": "ما أول سورة في المصحف؟",
+            "options": ["الفاتحة", "البقرة", "الإخلاص"],
+            "answer": 0,
+            "explanation": "الفاتحة هي أول سور المصحف.",
+        })
+        application = SimpleNamespace(bot_data={"games": games, "live_store": live_store})
+        return SimpleNamespace(bot=bot, application=application), bot, live_store
+
+    async def test_group_quiz_does_not_require_broadcast_target_registration(self):
+        context, bot, live_store = self._context("supergroup")
+
+        sent = await _send_community_quiz(-100001, context)
+
+        self.assertTrue(sent)
+        self.assertFalse(bot.poll_kwargs["is_anonymous"])
+        self.assertEqual(live_store.registered, [
+            ("poll-test-001", -100001, "q-test", False)
+        ])
+
+    async def test_channel_quiz_uses_anonymous_poll(self):
+        context, bot, live_store = self._context("channel")
+
+        sent = await _send_community_quiz(-100002, context)
+
+        self.assertTrue(sent)
+        self.assertTrue(bot.poll_kwargs["is_anonymous"])
+        self.assertEqual(live_store.registered, [
+            ("poll-test-001", -100002, "q-test", True)
+        ])
 
 
 if __name__ == "__main__":
