@@ -722,7 +722,7 @@ async def set_channel_time(
         await message.reply_text("هذا الأمر مخصص لمالك البوت في الخاص.")
         return
     if len(context.args) != 3:
-        await message.reply_text("الصيغة: /setchanneltime @channel morning|evening|quiz HH:MM")
+        await message.reply_text("الصيغة: /setchanneltime @channel morning|evening|hadith|quiz HH:MM")
         return
     channel_ref, kind, value = context.args
     try:
