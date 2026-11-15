@@ -779,6 +779,8 @@ def register_live_game_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("publishlivequiz", publish_live_quiz_command))
     application.add_handler(CallbackQueryHandler(live_admin_stats_callback, pattern=r"^adm:stats$"), group=-1)
     application.add_handler(CallbackQueryHandler(live_admin_publish_callback, pattern=r"^adm:quiz$"), group=-1)
+    application.add_handler(CommandHandler("help", enhanced_help_command), group=-1)
+    application.add_handler(CallbackQueryHandler(enhanced_admin_help_callback, pattern=r"^adm:help$"), group=-1)
     application.add_handler(CallbackQueryHandler(live_answer_callback, pattern=r"^lg:"))
     application.add_handler(CallbackQueryHandler(solo_quiz_callback, pattern=r"^live:solo$"))
     application.add_handler(PollAnswerHandler(poll_answer_handler))
@@ -942,4 +944,55 @@ async def live_admin_publish_callback(
             [InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="adm:help")],
         ]),
     )
+    raise ApplicationHandlerStop
+
+
+async def enhanced_help_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message = update.effective_message
+    if not message:
+        return
+    await message.reply_text(
+        "📖 دليل أَثَر\n━━━━━━━━━━━━━━━━━━\n"
+        "/start — القائمة الرئيسية\n"
+        "/quiz — سؤال فردي\n"
+        "/livegame — منافسة جماعية من 5 جولات\n"
+        "/livegame 3 — تحديد عدد الجولات (1–10)\n"
+        "/gameboard — ترتيب مجموعتك\n"
+        "/liveboard — الترتيب العام\n"
+        "/endgame — إيقاف منافسة المجموعة\n"
+        "/channelboard — ترتيب اختبارات القنوات\n"
+        "/myid — رقم حسابك\n"
+        "/admin — لوحة الإدارة للمصرّح لهم"
+    )
+    raise ApplicationHandlerStop
+
+
+async def enhanced_admin_help_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.from_user:
+        return
+    settings = context.application.bot_data["settings"]
+    if query.from_user.id not in settings.admin_ids:
+        await query.answer("غير مصرح لك بالدخول.", show_alert=True)
+        raise ApplicationHandlerStop
+    await query.answer()
+    text = (
+        "🛡️ دليل إدارة أَثَر\n━━━━━━━━━━━━━━━━━━\n"
+        "/addtarget @channel — تسجيل قناة\n"
+        "/targets — عرض الوجهات\n"
+        "/deltarget CHAT_ID — حذف وجهة\n"
+        "/publishlivequiz — نشر اختبار تفاعلي لكل الوجهات\n"
+        "/channelquiz — نشر اختبار للقنوات فقط\n"
+        "/channelboard — إحصائيات نتائج القنوات\n"
+        "/publish — نسخ منشور إلى الوجهات\n"
+        "/admin — العودة إلى لوحة الإدارة"
+    )
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("📈 الإحصائيات", callback_data="adm:stats")],
+        [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
+    ]))
     raise ApplicationHandlerStop
