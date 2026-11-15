@@ -1302,6 +1302,12 @@ async def _live_stats(store: LiveGameStore) -> dict[str, int]:
         "poll_answers": "SELECT COUNT(*) AS n FROM channel_quiz_answers",
         "channel_votes": "SELECT COALESCE(SUM(total_voters), 0) AS n FROM channel_quiz_polls WHERE is_anonymous=1",
         "channel_correct": "SELECT COALESCE(SUM(correct_votes), 0) AS n FROM channel_quiz_polls WHERE is_anonymous=1",
+        "managed_destinations": "SELECT COUNT(*) AS n FROM community_settings",
+        "auto_morning": "SELECT COALESCE(SUM(morning_enabled), 0) AS n FROM community_settings",
+        "auto_evening": "SELECT COALESCE(SUM(evening_enabled), 0) AS n FROM community_settings",
+        "auto_quiz": "SELECT COALESCE(SUM(quiz_enabled), 0) AS n FROM community_settings",
+        "deliveries_7d": "SELECT COUNT(*) AS n FROM delivery_logs WHERE created_at >= datetime('now', '-7 days')",
+        "failed_7d": "SELECT COUNT(*) AS n FROM delivery_logs WHERE status='failed' AND created_at >= datetime('now', '-7 days')",
     }
     for key, sql in queries.items():
         cursor = await store.conn.execute(sql)
@@ -1335,7 +1341,13 @@ async def live_admin_stats_callback(
         f"👥 إجابات المسابقات المعرّفة: {stats['poll_answers']}\n"
         f"📊 تصويت القنوات المجهول: {stats['channel_votes']}\n"
         f"✅ الصحيحة في القنوات: {stats['channel_correct']}\n"
-        f"🧠 إجابات فردية: {db_stats['game_answers']}"
+        f"🧠 إجابات فردية: {db_stats['game_answers']}\n"
+        f"🏘 وجهات لها إعدادات: {stats['managed_destinations']}\n"
+        f"☀️ جداول أذكار الصباح: {stats['auto_morning']}\n"
+        f"🌙 جداول أذكار المساء: {stats['auto_evening']}\n"
+        f"🎯 جداول سؤال اليوم: {stats['auto_quiz']}\n"
+        f"📬 عمليات نشر آخر 7 أيام: {stats['deliveries_7d']}\n"
+        f"⚠️ إخفاقات آخر 7 أيام: {stats['failed_7d']}"
     )
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("📢 وجهات النشر", callback_data="adm:targets")],
