@@ -206,73 +206,94 @@ async def _is_group_admin(
 
 
 def _panel_text(settings: dict[str, Any]) -> str:
-    def state(enabled: int) -> str:
-        return "🟢 مفعّل" if enabled else "⚪ متوقف"
-
+    enabled = sum(
+        int(settings[key]) for key in
+        ("morning_enabled", "evening_enabled", "quiz_enabled", "hadith_enabled")
+    )
     return (
-        f"🛡️ مركز تحكم المجموعة\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
+        "🌿 أَثَر | مركز المجموعة\n"
+        "━━━━━━━━━━━━━━━━━━\n"
         f"🏘 {settings.get('title') or 'مجموعتك'}\n"
-        f"🌍 التوقيت: {settings['timezone']}\n\n"
-        f"☀️ ذكر الصباح: {state(settings['morning_enabled'])} · {settings['morning_time']}\n"
-        f"🌙 ذكر المساء: {state(settings['evening_enabled'])} · {settings['evening_time']}\n"
-        f"🎯 سؤال اليوم: {state(settings['quiz_enabled'])} · {settings['quiz_time']}\n"
-        f"📜 حديث اليوم: {state(settings['hadith_enabled'])} · {settings['hadith_time']}\n"
-        f"👋 ترحيب الأعضاء: {state(settings['welcome_enabled'])}\n\n"
-        "تغيير المواعيد: /setmorning 07:00 · /setevening 18:00 · /setquiz 20:00 · /sethadith 14:00\n"
-        "التوقيت الافتراضي: الجزائر. النشر التلقائي متوقف حتى تفعّله بنفسك."
+        f"🕰 توقيت الجزائر · {settings['timezone']}\n\n"
+        f"📅 الجداول المفعّلة: {enabled}/4\n"
+        f"👋 الترحيب: {'مفعّل' if settings['welcome_enabled'] else 'متوقف'}\n\n"
+        "اختر القسم الذي تريد إدارته. إعدادات هذه المجموعة مستقلة عن بقية المجموعات."
     )
 
 
 def _panel_keyboard(settings: dict[str, Any]) -> InlineKeyboardMarkup:
-    def label(title: str, enabled: int) -> str:
-        return ("🟢 " if enabled else "⚪ ") + title
-
+    welcome = bool(settings["welcome_enabled"])
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton(
-                label("ذكر الصباح", settings["morning_enabled"]),
-                callback_data="community:toggle:morning",
-                style="success" if settings["morning_enabled"] else None,
-            ),
-            InlineKeyboardButton(
-                label("ذكر المساء", settings["evening_enabled"]),
-                callback_data="community:toggle:evening",
-                style="success" if settings["evening_enabled"] else None,
-            ),
+            InlineKeyboardButton("📿 المحتوى والجدولة", callback_data="community:section:schedule", style="success"),
+            InlineKeyboardButton("📨 النشر الفوري", callback_data="community:section:publish"),
         ],
         [
             InlineKeyboardButton(
-                label("سؤال اليوم", settings["quiz_enabled"]),
-                callback_data="community:toggle:quiz",
-                style="success" if settings["quiz_enabled"] else None,
-            ),
-            InlineKeyboardButton(
-                label("حديث اليوم", settings["hadith_enabled"]),
-                callback_data="community:toggle:hadith",
-                style="success" if settings["hadith_enabled"] else None,
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                label("ترحيب الأعضاء", settings["welcome_enabled"]),
+                ("🟢 " if welcome else "⚪ ") + "ترحيب الأعضاء",
                 callback_data="community:toggle:welcome",
-                style="success" if settings["welcome_enabled"] else None,
+                style="success" if welcome else None,
             ),
-            InlineKeyboardButton("📊 إحصائيات المجموعة", callback_data="community:stats"),
+            InlineKeyboardButton("📊 الإحصائيات", callback_data="community:stats"),
         ],
         [
-            InlineKeyboardButton("📿 انشر ذكر صباح", callback_data="community:post:morning"),
-            InlineKeyboardButton("🌙 انشر ذكر مساء", callback_data="community:post:evening"),
+            InlineKeyboardButton("🎮 ساحة الألعاب", callback_data="game", style="primary"),
+            InlineKeyboardButton("🔄 تحديث", callback_data="community:refresh"),
+        ],
+    ])
+
+
+def _section_text(settings: dict[str, Any], section: str) -> str:
+    if section == "schedule":
+        return (
+            "📿 أَثَر | المحتوى والجدولة\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "فعّل ما تريد أن يصل تلقائياً إلى المجموعة، واضبط الوقت بالأوامر أدناه.\n\n"
+            "☀️ الصباح · /setmorning 07:00\n"
+            "🌙 المساء · /setevening 18:00\n"
+            "📜 الحديث · /sethadith 14:00\n"
+            "🎯 السؤال · /setquiz 20:00\n\n"
+            "كل موعد مستقل، والتوقيت المعتمد هو توقيت الجزائر."
+        )
+    return (
+        "📨 أَثَر | النشر الفوري\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "اختر ما تريد نشره الآن في هذه المجموعة. النشر الفوري لا يغيّر جدول النشر التلقائي."
+    )
+
+
+def _section_keyboard(settings: dict[str, Any], section: str) -> InlineKeyboardMarkup:
+    if section == "schedule":
+        entries = [
+            ("morning", "☀️ الصباح", "morning_enabled"),
+            ("evening", "🌙 المساء", "evening_enabled"),
+            ("hadith", "📜 الحديث", "hadith_enabled"),
+            ("quiz", "🎯 سؤال اليوم", "quiz_enabled"),
+        ]
+        rows = []
+        for i in range(0, len(entries), 2):
+            row = []
+            for kind, title, key in entries[i:i + 2]:
+                enabled = bool(settings[key])
+                time_key = kind + "_time"
+                row.append(InlineKeyboardButton(
+                    ("🟢 " if enabled else "⚪ ") + title + " · " + settings[time_key],
+                    callback_data=f"community:toggle:{kind}",
+                    style="success" if enabled else None,
+                ))
+            rows.append(row)
+        rows.append([InlineKeyboardButton("↩️ مركز المجموعة", callback_data="community:refresh")])
+        return InlineKeyboardMarkup(rows)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("☀️ انشر ذكر الصباح", callback_data="community:post:morning"),
+            InlineKeyboardButton("🌙 انشر ذكر المساء", callback_data="community:post:evening"),
         ],
         [
             InlineKeyboardButton("📜 انشر حديثاً", callback_data="community:post:hadith"),
             InlineKeyboardButton("🎯 انشر سؤالاً", callback_data="community:post:quiz", style="primary"),
         ],
-        [
-            InlineKeyboardButton("🎮 ساحة الألعاب", callback_data="game", style="success"),
-            InlineKeyboardButton("🔄 تحديث اللوحة", callback_data="community:refresh"),
-        ],
+        [InlineKeyboardButton("↩️ مركز المجموعة", callback_data="community:refresh")],
     ])
 
 
