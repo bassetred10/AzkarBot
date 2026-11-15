@@ -419,14 +419,14 @@ async def _send_hadith(
     return True
 
 
-async def _send_group_quiz(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+async def _send_community_quiz(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    # Group chats are not necessarily owner broadcast targets. Resolve the actual
+    # Telegram chat type so groups can receive named-vote polls and channels stay anonymous.
+    chat = await context.bot.get_chat(chat_id)
+    if chat.type not in ("group", "supergroup", "channel"):
+        raise ValueError("Daily community quizzes can only be sent to groups or channels")
+    is_anonymous = chat.type == "channel"
     games = context.application.bot_data["games"]
-    db = context.application.bot_data["db"]
-    targets = await db.list_targets()
-    target = next((item for item in targets if item["chat_id"] == chat_id), None)
-    if not target:
-        raise RuntimeError("This destination is not registered with ATHAR")
-    is_anonymous = target["chat_type"] == "channel"
     question = games.random_question()
     poll = await context.bot.send_poll(
         chat_id=chat_id,
@@ -454,7 +454,7 @@ async def _deliver(
     if kind in ("morning", "evening"):
         return await _send_dhikr(chat_id, kind, context)
     if kind == "quiz":
-        return await _send_group_quiz(chat_id, context)
+        return await _send_community_quiz(chat_id, context)
     if kind == "hadith":
         return await _send_hadith(chat_id, context)
     raise ValueError("Unknown community delivery kind")
