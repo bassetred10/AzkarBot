@@ -22,6 +22,8 @@ from telegram.ext import (
     ContextTypes,
 )
 
+from app.permissions import can_publish_to_channel
+
 logger = logging.getLogger("athar.community")
 DEFAULT_TIMEZONE = "Africa/Algiers"
 SCHEDULES = {
@@ -694,7 +696,7 @@ async def channel_control_command(
             return
         me = await context.bot.get_me()
         bot_member = await context.bot.get_chat_member(target.id, me.id)
-        if bot_member.status not in ("administrator", "creator") or not getattr(bot_member, "can_post_messages", False):
+        if bot_member.status not in ("administrator", "creator") or not can_publish_to_channel(bot_member):
             await message.reply_text("يجب أن يكون البوت مشرفاً في القناة مع صلاحية نشر الرسائل.")
             return
         registered = await context.application.bot_data["db"].list_targets()
