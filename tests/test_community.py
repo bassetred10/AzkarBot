@@ -21,6 +21,8 @@ class CommunityStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first["morning_enabled"], 0)
         self.assertEqual(first["evening_enabled"], 0)
         self.assertEqual(first["quiz_enabled"], 0)
+        self.assertEqual(first["hadith_enabled"], 0)
+        self.assertEqual(first["hadith_time"], "14:00")
         self.assertEqual(first["timezone"], "Africa/Algiers")
         self.assertEqual(second["morning_enabled"], 0)
 
@@ -43,13 +45,29 @@ class CommunityStoreTests(unittest.IsolatedAsyncioTestCase):
         await self.store.toggle(-100004, "morning", 10)
         await self.store.toggle(-100004, "evening", 10)
         await self.store.toggle(-100004, "quiz", 10)
+        await self.store.toggle(-100004, "hadith", 10)
         await self.store.deactivate_group(-100004)
 
         config = await self.store.get(-100004)
         self.assertEqual(config["morning_enabled"], 0)
         self.assertEqual(config["evening_enabled"], 0)
         self.assertEqual(config["quiz_enabled"], 0)
+        self.assertEqual(config["hadith_enabled"], 0)
         self.assertEqual(config["welcome_enabled"], 0)
+
+
+
+    async def test_hadith_schedule_is_independent_and_time_is_validated(self):
+        await self.store.get(-100007)
+        enabled = await self.store.toggle(-100007, "hadith", 10)
+        updated = await self.store.set_time(-100007, "hadith", "15:30", 10)
+        untouched = await self.store.get(-100008)
+
+        self.assertEqual(enabled["hadith_enabled"], 1)
+        self.assertEqual(updated["hadith_time"], "15:30")
+        self.assertEqual(untouched["hadith_enabled"], 0)
+        with self.assertRaises(ValueError):
+            await self.store.set_time(-100007, "hadith", "30:70", 10)
 
     async def test_delivery_statistics_are_group_scoped(self):
         await self.store.ensure_group(-100005, "One group")
