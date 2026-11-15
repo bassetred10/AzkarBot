@@ -1061,6 +1061,11 @@ async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 InlineKeyboardButton("بطولة الحديث", callback_data="arena:start:hadith"),
                 InlineKeyboardButton("بطولة العبادات", callback_data="arena:start:worship"),
             ],
+            [
+                InlineKeyboardButton("بطولة الأنبياء", callback_data="arena:start:prophets"),
+                InlineKeyboardButton("بطولة الصحابة", callback_data="arena:start:companions"),
+            ],
+            [InlineKeyboardButton("بطولة الأخلاق", callback_data="arena:start:manners")],
         ])
     rows.extend([
         [InlineKeyboardButton("🏆 لوحة المتصدرين", callback_data="leaderboard", style="primary")],
@@ -1078,12 +1083,12 @@ async def solo_quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     if not query or not query.message:
         return
-    await query.answer()
     parts = query.data.split(":")
     category_id = parts[2] if len(parts) > 2 else "all"
     if category_id != "all" and category_id not in CATEGORY_LABELS:
         await query.answer("هذا الباب غير متاح.", show_alert=True)
         return
+    await query.answer()
     question = _games(context).random_question(category_id)
     topic = "عام" if category_id == "all" else CATEGORY_LABELS[category_id]
     keyboard = InlineKeyboardMarkup([
