@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import random
 import time
 import uuid
@@ -171,7 +172,7 @@ class LiveGameStore:
         deadline = float(session["round_ends_at"])
         if now >= deadline:
             return "closed"
-        speed_bonus = min(5, max(0, int((deadline - now) // 5))) if is_correct else 0
+        speed_bonus = min(5, math.ceil(max(0.0, deadline - now) / 5)) if is_correct else 0
         points = (10 + speed_bonus) if is_correct else 0
         cursor = await self.conn.execute(
             """INSERT OR IGNORE INTO live_game_answers
@@ -661,6 +662,7 @@ async def channel_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 question=question["question"][:300],
                 options=[str(option)[:100] for option in question["options"][:10]],
                 is_anonymous=False,
+                allows_revoting=False,
                 type="quiz",
                 correct_option_ids=[question["answer"]],
                 explanation=(question.get("explanation") or "أحسنت على المشاركة.")[:200],
@@ -809,6 +811,7 @@ async def _publish_native_quiz_targets(
                 question=question["question"][:300],
                 options=[str(option)[:100] for option in question["options"][:10]],
                 is_anonymous=False,
+                allows_revoting=False,
                 type="quiz",
                 correct_option_ids=[question["answer"]],
                 explanation=(question.get("explanation") or "أحسنت على المشاركة.")[:200],
