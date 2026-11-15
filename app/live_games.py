@@ -354,8 +354,8 @@ class LiveGameStore:
 
     async def channel_poll_board(self, limit: int = 10) -> list[dict[str, Any]]:
         cursor = await self.conn.execute(
-            """SELECT p.poll_id, p.chat_id, p.question_id, p.total_voters,
-                      p.correct_votes, p.is_closed, p.created_at,
+            """SELECT p.poll_id, p.chat_id, p.question_id, p.question_text,
+                      p.total_voters, p.correct_votes, p.is_closed, p.created_at,
                       COALESCE(t.title, CAST(p.chat_id AS TEXT)) AS chat_title
                FROM channel_quiz_polls p
                LEFT JOIN publish_targets t ON t.chat_id=p.chat_id
@@ -1005,7 +1005,9 @@ async def channel_board_command(update: Update, context: ContextTypes.DEFAULT_TY
     lines = ["📣 إحصائيات مسابقات القنوات", "━━━━━━━━━━━━━━━━━━"]
     for row in rows:
         question = _games(context).get(row["question_id"])
-        title = question["question"] if question else "اختبار أَثَر"
+        title = row.get("question_text") or (
+            question["question"] if question else "اختبار أَثَر"
+        )
         status = "مغلقة" if row["is_closed"] else "مفتوحة"
         lines.extend([
             f"\n📍 {row['chat_title']} · {status}",
