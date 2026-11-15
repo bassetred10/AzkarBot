@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 
 from app.database import Database
-from app.live_games import LiveGameStore, register_live_game_handlers
+from app.live_games import LiveGameStore, live_round_timeout, register_live_game_handlers
 
 
 class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
@@ -133,6 +133,28 @@ class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(board[0]["correct"], 1)
         self.assertEqual(board[0]["answered"], 1)
 
+    async def test_round_advancement_is_idempotent(self):
+        deadline = time.time() - 1
+        await self.store.create_session(
+            "sessionadvance", -100321, "Advance Group", 101, 3,
+            "q001", deadline, "quran", 25
+        )
+
+        first = await self.store.advance_session(
+            "sessionadvance", "q002", ["q001", "q002"],
+            time.time() + 25, expected_round=1, expected_deadline=deadline,
+        )
+        duplicate = await self.store.advance_session(
+            "sessionadvance", "q003", ["q001", "q002", "q003"],
+            time.time() + 25, expected_round=1, expected_deadline=deadline,
+        )
+        session = await self.store.get_session("sessionadvance")
+
+        self.assertTrue(first)
+        self.assertFalse(duplicate)
+        self.assertEqual(session["current_round"], 2)
+        self.assertEqual(session["question_id"], "q002")
+
     async def test_stale_round_cannot_accept_an_answer(self):
         await self.store.create_session(
             "session001", -100123, "Test Group", 101, 2, "q001", time.time() + 60
@@ -141,6 +163,97 @@ class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "closed")
 
 
+
+
+class _FakeJobQueue:
+    def __init__(self):
+        self.jobs = []
+
+    def get_jobs_by_name(self, name):
+        return []
+
+    def run_once(self, callback, when, data, name):
+        self.jobs.append((callback, when, data, name))
+
+
+class _FakeEditBot:
+    def __init__(self):
+        self.edits = []
+
+    async def edit_message_text(self, **kwargs):
+        self.edits.append(kwargs)
+
+
+class LiveRoundHandlerTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.db = Database(":memory:")
+        await self.db.initialize()
+        self.store = LiveGameStore(self.db)
+        await self.store.initialize()
+        self.bot = _FakeEditBot()
+        self.queue = _FakeJobQueue()
+        self.question_one = {
+            "id": "q001", "question": "سؤال أول",
+            "options": ["أ", "ب"], "answer": 0,
+            "explanation": "شرح أول", "source": "مصدر أول",
+        }
+        self.question_two = {
+            "id": "q002", "question": "سؤال ثانٍ",
+            "options": ["ج", "د"], "answer": 1,
+            "explanation": "شرح ثانٍ", "source": "مصدر ثانٍ",
+        }
+        class Games:
+            def get(inner, question_id):
+                return {
+                    "q001": self.question_one,
+                    "q002": self.question_two,
+                }.get(question_id)
+
+            def random_question(inner, category_id="all", exclude_ids=None):
+                return self.question_two
+        self.games = Games()
+        self.application = SimpleNamespace(
+            bot_data={"live_store": self.store, "games": self.games},
+            job_queue=self.queue,
+            bot=self.bot,
+        )
+        self.context = SimpleNamespace(
+            application=self.application,
+            job=SimpleNamespace(data="session-timeout"),
+        )
+
+    async def asyncTearDown(self):
+        await self.db.close()
+
+    async def test_expired_round_advances_and_schedules_next_round(self):
+        await self.store.create_session(
+            "session-timeout", -100654, "Timer Group", 101, 2,
+            "q001", time.time() - 1, "quran", 25
+        )
+        await self.store.set_message_id("session-timeout", 765)
+
+        await live_round_timeout(self.context)
+
+        session = await self.store.get_session("session-timeout")
+        self.assertEqual(session["current_round"], 2)
+        self.assertEqual(session["question_id"], "q002")
+        self.assertEqual(session["status"], "active")
+        self.assertTrue(self.bot.edits)
+        self.assertTrue(any(job[0].__name__ == "live_round_timeout" for job in self.queue.jobs))
+
+    async def test_expired_final_round_finishes_and_displays_board(self):
+        await self.store.create_session(
+            "session-timeout", -100655, "Final Group", 101, 1,
+            "q001", time.time() - 1, "quran", 25
+        )
+        await self.store.set_message_id("session-timeout", 766)
+
+        await live_round_timeout(self.context)
+
+        session = await self.store.get_session("session-timeout")
+        self.assertEqual(session["status"], "finished")
+        self.assertTrue(self.bot.edits)
+        self.assertIn("انتهت بطولة أَثَر", self.bot.edits[-1]["text"])
 
 
 class LiveGameHandlerRegistrationTests(unittest.TestCase):
