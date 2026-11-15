@@ -900,3 +900,33 @@ async def live_admin_stats_callback(
         [InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="adm:help")],
     ]))
     raise ApplicationHandlerStop
+
+
+async def live_admin_publish_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query:
+        return
+    settings = context.application.bot_data["settings"]
+    if not query.from_user or query.from_user.id not in settings.admin_ids:
+        await query.answer("غير مصرح لك بالنشر.", show_alert=True)
+        raise ApplicationHandlerStop
+    await query.answer("جارٍ نشر الاختبار...")
+    sent, failed = await _publish_native_quiz_targets(context)
+    text = (
+        "📣 تقرير نشر الاختبار التفاعلي\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"✅ أُرسل إلى: {sent}\n"
+        f"⚠️ تعذّر: {failed}\n"
+        "⏳ مدة التصويت: 90 ثانية\n"
+        "📊 تُجمع الإجابات المسجلة تلقائياً."
+    )
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📈 تحديث الإحصائيات", callback_data="adm:stats")],
+            [InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="adm:help")],
+        ]),
+    )
+    raise ApplicationHandlerStop
