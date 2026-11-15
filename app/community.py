@@ -441,7 +441,7 @@ async def community_callback(
         return
     chat = query.message.chat
     parts = query.data.split(":")
-    if len(parts) >= 5 and parts[1] == "target":
+    if len(parts) >= 4 and parts[1] == "target":
         settings = context.application.bot_data["settings"]
         if query.from_user.id not in settings.admin_ids:
             await query.answer("مركز القناة خاص بمالك البوت.", show_alert=True)
