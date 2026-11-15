@@ -590,6 +590,7 @@ async def on_bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     status = change.new_chat_member.status
     db: Database = context.application.bot_data["db"]
     community = context.application.bot_data.get("community_store")
+    queue = context.application.job_queue
     if chat.type in ("group", "supergroup"):
         if status in ("member", "administrator", "creator"):
             await db.add_target(chat.id, chat.title or str(chat.id), chat.type)
@@ -602,7 +603,7 @@ async def on_bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         text=(
                             "🌿 أهلاً بكم، أنا أَثَر.\n"
                             "لمشرفي المجموعة: /groupadmin لفتح مركز التحكم.\n"
-                            "يمكنكم تفعيل أذكار الصباح والمساء وسؤال اليوم، "
+                            "يمكنكم تفعيل أذكار الصباح والمساء وحديث اليوم وسؤال اليوم، "
                             "وتحديد مواعيد النشر بتوقيت الجزائر.\n"
                             "ابدأوا الألعاب عبر زر «ساحة أَثَر» أو /livegame."
                         ),
@@ -615,7 +616,25 @@ async def on_bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await db.remove_target(chat.id)
             if community:
                 await community.deactivate_group(chat.id)
-            queue = context.application.job_queue
+            if queue:
+                for kind in ("morning", "evening", "quiz", "hadith"):
+                    for job in queue.get_jobs_by_name(f"athar-community:{chat.id}:{kind}"):
+                        job.schedule_removal()
+    elif chat.type == "channel":
+        can_publish = status in ("administrator", "creator") and bool(
+            getattr(change.new_chat_member, "can_post_messages", False)
+        )
+        if can_publish:
+            await db.add_target(chat.id, chat.title or str(chat.id), chat.type)
+            if community:
+                await community.ensure_group(chat.id, chat.title or "")
+            logger.info("Registered channel with posting permission: %s", chat.id)
+        elif status in ("left", "kicked") or (
+            status == "administrator" and not can_publish
+        ):
+            await db.remove_target(chat.id)
+            if community:
+                await community.deactivate_group(chat.id)
             if queue:
                 for kind in ("morning", "evening", "quiz", "hadith"):
                     for job in queue.get_jobs_by_name(f"athar-community:{chat.id}:{kind}"):
