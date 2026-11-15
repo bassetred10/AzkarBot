@@ -28,7 +28,7 @@ from telegram.ext import (
 )
 
 from app.database import Database
-from app.games import GameCatalogue
+from app.games import CATEGORY_ICONS, CATEGORY_LABELS, GameCatalogue
 
 logger = logging.getLogger("athar.live_games")
 
@@ -61,6 +61,7 @@ class LiveGameStore:
                 current_round INTEGER NOT NULL,
                 total_rounds INTEGER NOT NULL,
                 question_id TEXT NOT NULL,
+                category_id TEXT NOT NULL DEFAULT 'all',
                 used_question_ids TEXT NOT NULL DEFAULT '[]',
                 message_id INTEGER,
                 round_ends_at REAL NOT NULL,
@@ -89,7 +90,9 @@ class LiveGameStore:
                 is_anonymous INTEGER NOT NULL DEFAULT 0,
                 total_voters INTEGER NOT NULL DEFAULT 0,
                 correct_votes INTEGER NOT NULL DEFAULT 0,
-                is_closed INTEGER NOT NULL DEFAULT 0
+                is_closed INTEGER NOT NULL DEFAULT 0,
+                answer_index INTEGER,
+                question_text TEXT
             );
             CREATE TABLE IF NOT EXISTS channel_quiz_answers (
                 poll_id TEXT NOT NULL REFERENCES channel_quiz_polls(poll_id) ON DELETE CASCADE,
@@ -102,17 +105,25 @@ class LiveGameStore:
             );
             """
         )
-        # Migrate databases created by an earlier live-games release.
-        columns_cursor = await self.conn.execute("PRAGMA table_info(channel_quiz_polls)")
-        columns = {row["name"] for row in await columns_cursor.fetchall()}
+        # Migrate databases created by earlier releases without deleting user data.
+        session_cursor = await self.conn.execute("PRAGMA table_info(live_game_sessions)")
+        session_columns = {row["name"] for row in await session_cursor.fetchall()}
+        if "category_id" not in session_columns:
+            await self.conn.execute(
+                "ALTER TABLE live_game_sessions ADD COLUMN category_id TEXT NOT NULL DEFAULT 'all'"
+            )
+        poll_cursor = await self.conn.execute("PRAGMA table_info(channel_quiz_polls)")
+        poll_columns = {row["name"] for row in await poll_cursor.fetchall()}
         migrations = {
             "is_anonymous": "INTEGER NOT NULL DEFAULT 0",
             "total_voters": "INTEGER NOT NULL DEFAULT 0",
             "correct_votes": "INTEGER NOT NULL DEFAULT 0",
             "is_closed": "INTEGER NOT NULL DEFAULT 0",
+            "answer_index": "INTEGER",
+            "question_text": "TEXT",
         }
         for column, definition in migrations.items():
-            if column not in columns:
+            if column not in poll_columns:
                 await self.conn.execute(
                     f"ALTER TABLE channel_quiz_polls ADD COLUMN {column} {definition}"
                 )
@@ -149,16 +160,18 @@ class LiveGameStore:
         total_rounds: int,
         question_id: str,
         deadline: float,
+        category_id: str = "all",
     ) -> bool:
         try:
             await self.conn.execute(
                 """INSERT INTO live_game_sessions
                    (session_id, chat_id, chat_title, owner_id, status, current_round,
-                    total_rounds, question_id, used_question_ids, round_ends_at, started_at)
-                   VALUES (?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?)""",
+                    total_rounds, question_id, category_id, used_question_ids,
+                    round_ends_at, started_at)
+                   VALUES (?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?)""",
                 (
                     session_id, chat_id, chat_title, owner_id, total_rounds,
-                    question_id, json.dumps([question_id]), deadline, time.time(),
+                    question_id, category_id, json.dumps([question_id]), deadline, time.time(),
                 ),
             )
             await self.conn.commit()
@@ -285,13 +298,23 @@ class LiveGameStore:
         await self.conn.commit()
 
     async def register_poll(
-        self, poll_id: str, chat_id: int, question_id: str, is_anonymous: bool = False
+        self,
+        poll_id: str,
+        chat_id: int,
+        question_id: str,
+        is_anonymous: bool = False,
+        answer_index: int | None = None,
+        question_text: str | None = None,
     ) -> None:
         await self.conn.execute(
             """INSERT OR REPLACE INTO channel_quiz_polls
-               (poll_id, chat_id, question_id, created_at, is_anonymous)
-               VALUES (?, ?, ?, ?, ?)""",
-            (poll_id, chat_id, question_id, time.time(), int(is_anonymous)),
+               (poll_id, chat_id, question_id, created_at, is_anonymous,
+                answer_index, question_text)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                poll_id, chat_id, question_id, time.time(),
+                int(is_anonymous), answer_index, question_text,
+            ),
         )
         await self.conn.commit()
 
