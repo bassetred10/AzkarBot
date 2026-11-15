@@ -91,6 +91,17 @@ class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
         session = await self.store.active_for_chat(-100789)
         self.assertEqual(session["category_id"], "seerah")
 
+
+
+    async def test_speed_round_duration_is_persisted(self):
+        await self.store.create_session(
+            "sessionfast", -100789, "Fast Group", 101, 5,
+            "q042", time.time() + 12, "seerah", 12
+        )
+        session = await self.store.active_for_chat(-100789)
+        self.assertEqual(session["category_id"], "seerah")
+        self.assertEqual(session["round_seconds"], 12)
+
     async def test_poll_can_store_a_custom_answer_index(self):
         await self.store.register_poll(
             "truefalse001", -100789, "q001",
