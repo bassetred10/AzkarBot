@@ -384,7 +384,15 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not user or not message:
         return
     if not is_admin(user.id, settings):
-        await message.reply_text("⛔ هذه المنطقة خاصة بإدارة أَثَر.")
+        await message.reply_text(
+            "🛡️ لوحة مالك البوت غير مهيّأة بعد.\n"
+            "1) أرسل /myid في الخاص لمعرفة رقم حسابك.\n"
+            "2) أضف الرقم إلى ADMIN_IDS في إعدادات Render أو ملف .env.\n"
+            "3) أعد تشغيل البوت ثم أرسل /admin من جديد."
+            if not settings.admin_ids
+            else "⛔ لوحة الإدارة العامة خاصة بمالك البوت الموجود في ADMIN_IDS. "
+                 "أما إعدادات مجموعتك فتُدار عبر /groupadmin داخل المجموعة."
+        )
         return
     await message.reply_text(
         "🛡️ مركز إدارة أَثَر\n━━━━━━━━━━━━━━\n"
