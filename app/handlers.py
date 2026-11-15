@@ -26,7 +26,7 @@ def home_keyboard(group_context: bool = False) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🎮 ساحة أَثَر", callback_data="game", style="success"),
-            InlineKeyboardButton("🏆 لوحة المتصدرين", callback_data="leaderboard", style="primary"),
+            InlineKeyboardButton("🏆 ترتيب المجموعة" if group_context else "🏆 لوحة المتصدرين", callback_data="leaderboard", style="primary"),
         ],
         [
             InlineKeyboardButton("⭐ محفوظاتي", callback_data="bookmarks"),
