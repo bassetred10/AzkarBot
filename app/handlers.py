@@ -10,6 +10,7 @@ from app.config import Settings
 from app.content import ContentCatalogue
 from app.database import Database
 from app.games import GameCatalogue
+from app.permissions import can_publish_to_channel
 
 logger = logging.getLogger("athar.handlers")
 
@@ -494,7 +495,7 @@ async def add_target_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if member.status not in ("administrator", "creator"):
             await message.reply_text("يجب ترقية البوت إلى مشرف في القناة أو المجموعة أولاً.")
             return
-        if chat.type == "channel" and not getattr(member, "can_post_messages", False):
+        if chat.type == "channel" and not can_publish_to_channel(member):
             await message.reply_text("البوت مشرف، لكنه لا يملك صلاحية نشر الرسائل في هذه القناة.")
             return
         await context.application.bot_data["db"].add_target(chat.id, chat.title or str(chat.id), chat.type)
@@ -621,8 +622,8 @@ async def on_bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     for job in queue.get_jobs_by_name(f"athar-community:{chat.id}:{kind}"):
                         job.schedule_removal()
     elif chat.type == "channel":
-        can_publish = status in ("administrator", "creator") and bool(
-            getattr(change.new_chat_member, "can_post_messages", False)
+        can_publish = status in ("administrator", "creator") and can_publish_to_channel(
+            change.new_chat_member
         )
         if can_publish:
             await db.add_target(chat.id, chat.title or str(chat.id), chat.type)
