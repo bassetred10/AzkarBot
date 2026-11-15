@@ -51,6 +51,36 @@ class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(board[0]["score"], 10)
         self.assertEqual(board[0]["correct"], 1)
 
+
+
+    async def test_anonymous_channel_poll_tracks_aggregate_totals(self):
+        await self.db.add_target(-100456, "ATHAR Channel", "channel")
+        await self.store.register_poll(
+            "poll001", -100456, "q001", is_anonymous=True
+        )
+        poll = SimpleNamespace(
+            id="poll001",
+            total_voter_count=9,
+            is_closed=True,
+            correct_option_ids=(1,),
+            options=[
+                SimpleNamespace(voter_count=3),
+                SimpleNamespace(voter_count=6),
+                SimpleNamespace(voter_count=0),
+                SimpleNamespace(voter_count=0),
+            ],
+        )
+
+        updated = await self.store.record_poll_state(poll)
+        rows = await self.store.channel_poll_board(10)
+
+        self.assertTrue(updated)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["chat_title"], "ATHAR Channel")
+        self.assertEqual(rows[0]["total_voters"], 9)
+        self.assertEqual(rows[0]["correct_votes"], 6)
+        self.assertEqual(rows[0]["is_closed"], 1)
+
     async def test_stale_round_cannot_accept_an_answer(self):
         await self.store.create_session(
             "session001", -100123, "Test Group", 101, 2, "q001", time.time() + 60
