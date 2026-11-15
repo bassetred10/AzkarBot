@@ -1,0 +1,545 @@
+"""Per-group controls and scheduled publishing for ATHAR.
+
+Group administrators configure only their own group. Scheduled posts are opt-in,
+persisted in SQLite, and restored when the bot restarts.
+"""
+from __future__ import annotations
+
+import logging
+import random
+import re
+from datetime import time as day_time
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import TelegramError
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    ChatMemberHandler,
+    CommandHandler,
+    ContextTypes,
+)
+
+logger = logging.getLogger("athar.community")
+DEFAULT_TIMEZONE = "Africa/Algiers"
+SCHEDULES = {
+    "morning": ("morning_enabled", "morning_time", "☀️ ذكر الصباح", "07:00"),
+    "evening": ("evening_enabled", "evening_time", "🌙 ذكر المساء", "18:00"),
+    "quiz": ("quiz_enabled", "quiz_time", "🎯 سؤال اليوم", "20:00"),
+}
+TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+class CommunityStore:
+    def __init__(self, db):
+        self.db = db
+
+    @property
+    def conn(self):
+        if self.db._db is None:
+            raise RuntimeError("Database is not connected")
+        return self.db._db
+
+    async def initialize(self) -> None:
+        await self.conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS community_settings (
+                chat_id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT '',
+                morning_enabled INTEGER NOT NULL DEFAULT 0,
+                evening_enabled INTEGER NOT NULL DEFAULT 0,
+                quiz_enabled INTEGER NOT NULL DEFAULT 0,
+                welcome_enabled INTEGER NOT NULL DEFAULT 1,
+                morning_time TEXT NOT NULL DEFAULT '07:00',
+                evening_time TEXT NOT NULL DEFAULT '18:00',
+                quiz_time TEXT NOT NULL DEFAULT '20:00',
+                timezone TEXT NOT NULL DEFAULT 'Africa/Algiers',
+                updated_by INTEGER,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        await self.conn.commit()
+
+    async def ensure_group(self, chat_id: int, title: str = "") -> None:
+        await self.conn.execute(
+            """INSERT INTO community_settings (chat_id, title)
+               VALUES (?, ?)
+               ON CONFLICT(chat_id) DO UPDATE SET
+                 title=CASE WHEN excluded.title <> '' THEN excluded.title ELSE title END""",
+            (chat_id, title),
+        )
+        await self.conn.commit()
+
+    async def get(self, chat_id: int) -> dict[str, Any]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM community_settings WHERE chat_id=?",
+            (chat_id,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            return dict(row)
+        await self.ensure_group(chat_id)
+        cursor = await self.conn.execute(
+            "SELECT * FROM community_settings WHERE chat_id=?",
+            (chat_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row)
+
+    async def all(self) -> list[dict[str, Any]]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM community_settings ORDER BY title, chat_id"
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+    async def toggle(self, chat_id: int, key: str, actor_id: int) -> dict[str, Any]:
+        allowed = {
+            "morning": "morning_enabled",
+            "evening": "evening_enabled",
+            "quiz": "quiz_enabled",
+            "welcome": "welcome_enabled",
+        }
+        column = allowed.get(key)
+        if not column:
+            raise ValueError("Unknown group setting")
+        current = await self.get(chat_id)
+        next_value = 0 if current[column] else 1
+        await self.conn.execute(
+            f"UPDATE community_settings SET {column}=?, updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE chat_id=?",
+            (next_value, actor_id, chat_id),
+        )
+        await self.conn.commit()
+        return await self.get(chat_id)
+
+    async def set_time(self, chat_id: int, key: str, value: str, actor_id: int) -> dict[str, Any]:
+        columns = {
+            "morning": "morning_time",
+            "evening": "evening_time",
+            "quiz": "quiz_time",
+        }
+        column = columns.get(key)
+        if not column or not TIME_RE.fullmatch(value):
+            raise ValueError("Time must be HH:MM")
+        await self.get(chat_id)
+        await self.conn.execute(
+            f"UPDATE community_settings SET {column}=?, updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE chat_id=?",
+            (value, actor_id, chat_id),
+        )
+        await self.conn.commit()
+        return await self.get(chat_id)
+
+    async def group_stats(self, chat_id: int) -> dict[str, int]:
+        stats = {}
+        queries = {
+            "sent": "SELECT COUNT(*) AS n FROM delivery_logs WHERE chat_id=? AND status='sent'",
+            "failed": "SELECT COUNT(*) AS n FROM delivery_logs WHERE chat_id=? AND status='failed'",
+            "polls": "SELECT COUNT(*) AS n FROM channel_quiz_polls WHERE chat_id=?",
+            "answers": """SELECT COUNT(*) AS n FROM channel_quiz_answers a
+                          JOIN channel_quiz_polls p ON p.poll_id=a.poll_id
+                          WHERE p.chat_id=?""",
+        }
+        for name, sql in queries.items():
+            cursor = await self.conn.execute(sql, (chat_id,))
+            stats[name] = int((await cursor.fetchone())["n"])
+        return stats
+
+
+def _store(context: ContextTypes.DEFAULT_TYPE) -> CommunityStore:
+    return context.application.bot_data["community_store"]
+
+
+async def _is_group_admin(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int
+) -> bool:
+    settings = context.application.bot_data["settings"]
+    if user_id in settings.admin_ids:
+        return True
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        return member.status in ("administrator", "creator")
+    except TelegramError:
+        return False
+
+
+def _panel_text(settings: dict[str, Any]) -> str:
+    def state(enabled: int) -> str:
+        return "🟢 مفعّل" if enabled else "⚪ متوقف"
+
+    return (
+        f"🛡️ مركز تحكم المجموعة\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🏘 {settings.get('title') or 'مجموعتك'}\n"
+        f"🌍 التوقيت: {settings['timezone']}\n\n"
+        f"☀️ ذكر الصباح: {state(settings['morning_enabled'])} · {settings['morning_time']}\n"
+        f"🌙 ذكر المساء: {state(settings['evening_enabled'])} · {settings['evening_time']}\n"
+        f"🎯 سؤال اليوم: {state(settings['quiz_enabled'])} · {settings['quiz_time']}\n"
+        f"👋 ترحيب الأعضاء: {state(settings['welcome_enabled'])}\n\n"
+        "تغيير المواعيد: /setmorning 07:00 · /setevening 18:00 · /setquiz 20:00\n"
+        "التوقيت الافتراضي: الجزائر. النشر التلقائي متوقف حتى تفعّله بنفسك."
+    )
+
+
+def _panel_keyboard(settings: dict[str, Any]) -> InlineKeyboardMarkup:
+    def label(title: str, enabled: int) -> str:
+        return ("🟢 " if enabled else "⚪ ") + title
+
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                label("ذكر الصباح", settings["morning_enabled"]),
+                callback_data="community:toggle:morning",
+                style="success" if settings["morning_enabled"] else "secondary",
+            ),
+            InlineKeyboardButton(
+                label("ذكر المساء", settings["evening_enabled"]),
+                callback_data="community:toggle:evening",
+                style="success" if settings["evening_enabled"] else "secondary",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                label("سؤال اليوم", settings["quiz_enabled"]),
+                callback_data="community:toggle:quiz",
+                style="success" if settings["quiz_enabled"] else "secondary",
+            ),
+            InlineKeyboardButton(
+                label("ترحيب الأعضاء", settings["welcome_enabled"]),
+                callback_data="community:toggle:welcome",
+                style="success" if settings["welcome_enabled"] else "secondary",
+            ),
+        ],
+        [
+            InlineKeyboardButton("📿 انشر ذكر الآن", callback_data="community:post:morning"),
+            InlineKeyboardButton("🌙 انشر ذكر مساء", callback_data="community:post:evening"),
+        ],
+        [
+            InlineKeyboardButton("🎯 انشر سؤالاً الآن", callback_data="community:post:quiz", style="primary"),
+            InlineKeyboardButton("📊 إحصائيات المجموعة", callback_data="community:stats"),
+        ],
+        [
+            InlineKeyboardButton("🎮 ساحة الألعاب", callback_data="game", style="success"),
+            InlineKeyboardButton("🔄 تحديث اللوحة", callback_data="community:refresh"),
+        ],
+    ])
+
+
+async def group_control_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message, user, chat = update.effective_message, update.effective_user, update.effective_chat
+    if not message or not user or not chat:
+        return
+    if chat.type not in ("group", "supergroup"):
+        await message.reply_text("افتح مركز التحكم من داخل المجموعة بالأمر /groupadmin.")
+        return
+    if not await _is_group_admin(context, chat.id, user.id):
+        await message.reply_text("مركز التحكم متاح لمشرفي هذه المجموعة فقط.")
+        return
+    await _store(context).ensure_group(chat.id, chat.title or "")
+    config = await _store(context).get(chat.id)
+    await message.reply_text(
+        _panel_text(config),
+        reply_markup=_panel_keyboard(config),
+        disable_web_page_preview=True,
+    )
+
+
+async def _reschedule_group(
+    application: Application, chat_id: int, config: dict[str, Any]
+) -> None:
+    queue = application.job_queue
+    if queue is None:
+        raise RuntimeError("JobQueue is unavailable")
+    for kind, (enabled_key, time_key, _label, _default) in SCHEDULES.items():
+        name = f"athar-community:{chat_id}:{kind}"
+        for job in queue.get_jobs_by_name(name):
+            job.schedule_removal()
+        if not config[enabled_key]:
+            continue
+        hour, minute = map(int, config[time_key].split(":"))
+        timezone = ZoneInfo(config.get("timezone") or DEFAULT_TIMEZONE)
+        queue.run_daily(
+            scheduled_community_post,
+            time=day_time(hour=hour, minute=minute, tzinfo=timezone),
+            days=tuple(range(7)),
+            data={"chat_id": chat_id, "kind": kind},
+            name=name,
+        )
+
+
+async def _send_dhikr(
+    chat_id: int, kind: str, context: ContextTypes.DEFAULT_TYPE
+) -> bool:
+    content = context.application.bot_data["content"]
+    category = "morning" if kind == "morning" else "evening"
+    items = content.by_category(category)
+    if not items:
+        return False
+    item = random.choice(items)
+    title = "☀️ أذكار الصباح" if kind == "morning" else "🌙 أذكار المساء"
+    lines = [
+        f"🌿 أَثَر | {title}",
+        "━━━━━━━━━━━━━━━━━━",
+        item.get("title", "ذكر"),
+        "",
+        item["text"],
+    ]
+    if item.get("repeat"):
+        lines.append(f"\n🔁 التكرار: {item['repeat']}")
+    lines.extend([
+        "",
+        f"📚 {item['source']} · {item['reference']}",
+    ])
+    if item.get("grading"):
+        lines.append(f"درجة الحديث: {item['grading']}")
+    if item.get("virtue"):
+        lines.append(f"\n✨ {item['virtue']}")
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="\n".join(lines),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📿 أذكار أكثر", callback_data="home")]
+        ]),
+        disable_web_page_preview=True,
+    )
+    return True
+
+
+async def _send_group_quiz(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    games = context.application.bot_data["games"]
+    question = games.random_question()
+    poll = await context.bot.send_poll(
+        chat_id=chat_id,
+        question=question["question"][:300],
+        options=[str(option)[:100] for option in question["options"][:10]],
+        is_anonymous=False,
+        allows_revoting=False,
+        type="quiz",
+        correct_option_ids=[question["answer"]],
+        explanation=(question.get("explanation") or "راجع المصدر المذكور.")[:200],
+        open_period=90,
+        close_date=None,
+    )
+    live_store = context.application.bot_data["live_store"]
+    if poll.poll:
+        await live_store.register_poll(
+            poll.poll.id, chat_id, question["id"], is_anonymous=False
+        )
+    return True
+
+
+async def _deliver(
+    chat_id: int, kind: str, context: ContextTypes.DEFAULT_TYPE
+) -> bool:
+    if kind in ("morning", "evening"):
+        return await _send_dhikr(chat_id, kind, context)
+    if kind == "quiz":
+        return await _send_group_quiz(chat_id, context)
+    raise ValueError("Unknown community delivery kind")
+
+
+async def scheduled_community_post(context: ContextTypes.DEFAULT_TYPE) -> None:
+    payload = context.job.data or {}
+    chat_id = int(payload.get("chat_id", 0))
+    kind = payload.get("kind")
+    if not chat_id or kind not in SCHEDULES:
+        return
+    store = _store(context)
+    config = await store.get(chat_id)
+    enabled_key = SCHEDULES[kind][0]
+    if not config.get(enabled_key):
+        return
+    try:
+        sent = await _deliver(chat_id, kind, context)
+        await context.application.bot_data["db"].log_delivery(
+            chat_id, f"scheduled_{kind}", "sent" if sent else "skipped"
+        )
+    except TelegramError as exc:
+        logger.warning("Scheduled %s post failed in %s: %s", kind, chat_id, exc)
+        await context.application.bot_data["db"].log_delivery(
+            chat_id, f"scheduled_{kind}", "failed", type(exc).__name__
+        )
+
+
+async def _refresh_panel(query, context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    config = await _store(context).get(chat_id)
+    await query.edit_message_text(
+        _panel_text(config),
+        reply_markup=_panel_keyboard(config),
+        disable_web_page_preview=True,
+    )
+
+
+async def community_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.from_user or not query.message:
+        return
+    chat = query.message.chat
+    if chat.type not in ("group", "supergroup"):
+        await query.answer("افتح مركز التحكم من داخل المجموعة.", show_alert=True)
+        return
+    if not await _is_group_admin(context, chat.id, query.from_user.id):
+        await query.answer("هذه الأزرار لمشرفي المجموعة فقط.", show_alert=True)
+        return
+    await _store(context).ensure_group(chat.id, chat.title or "")
+    parts = query.data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    if action == "toggle" and len(parts) == 3:
+        kind = parts[2]
+        config = await _store(context).toggle(chat.id, kind, query.from_user.id)
+        if kind in SCHEDULES:
+            await _reschedule_group(context.application, chat.id, config)
+        await query.answer("تم تحديث إعداد المجموعة.")
+        await _refresh_panel(query, context, chat.id)
+        return
+    if action == "post" and len(parts) == 3:
+        kind = parts[2]
+        await query.answer("جارٍ النشر...")
+        try:
+            sent = await _deliver(chat.id, kind, context)
+            if sent:
+                await context.application.bot_data["db"].log_delivery(
+                    chat.id, f"manual_{kind}", "sent", telegram_id=query.from_user.id
+                )
+                await query.message.reply_text("✅ نُشر المحتوى في المجموعة.")
+            else:
+                await query.message.reply_text("لا يوجد محتوى في هذا القسم حالياً.")
+        except TelegramError as exc:
+            await query.message.reply_text(f"تعذّر النشر. تحقق من صلاحيات البوت: {type(exc).__name__}")
+        return
+    if action == "stats":
+        await query.answer()
+        stats = await _store(context).group_stats(chat.id)
+        text = (
+            f"📊 إحصائيات {chat.title or 'المجموعة'}\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"📨 المنشورات الناجحة: {stats['sent']}\n"
+            f"⚠️ المنشورات المتعثرة: {stats['failed']}\n"
+            f"🎯 الاختبارات المنشورة: {stats['polls']}\n"
+            f"👥 الإجابات المسجلة: {stats['answers']}"
+        )
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("↩️ مركز التحكم", callback_data="community:refresh")]
+        ]))
+        return
+    if action == "refresh":
+        await query.answer("تم التحديث.")
+        await _refresh_panel(query, context, chat.id)
+        return
+    await query.answer("طلب غير معروف.", show_alert=True)
+
+
+async def _set_group_time(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    kind: str,
+) -> None:
+    message, user, chat = update.effective_message, update.effective_user, update.effective_chat
+    if not message or not user or not chat:
+        return
+    if chat.type not in ("group", "supergroup"):
+        await message.reply_text("هذا الأمر يعمل داخل المجموعة فقط.")
+        return
+    if not await _is_group_admin(context, chat.id, user.id):
+        await message.reply_text("تغيير المواعيد متاح لمشرفي المجموعة فقط.")
+        return
+    if not context.args or not TIME_RE.fullmatch(context.args[0]):
+        await message.reply_text(f"الصيغة: /set{kind} HH:MM — بتوقيت الجزائر.")
+        return
+    config = await _store(context).set_time(chat.id, kind, context.args[0], user.id)
+    if config[SCHEDULES[kind][0]]:
+        await _reschedule_group(context.application, chat.id, config)
+    await message.reply_text(
+        f"✅ تم ضبط موعد {SCHEDULES[kind][2]} إلى {context.args[0]} بتوقيت الجزائر."
+    )
+
+
+async def set_morning_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _set_group_time(update, context, "morning")
+
+
+async def set_evening_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _set_group_time(update, context, "evening")
+
+
+async def set_quiz_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _set_group_time(update, context, "quiz")
+
+
+async def community_stats_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message, user, chat = update.effective_message, update.effective_user, update.effective_chat
+    if not message or not user or not chat:
+        return
+    if chat.type not in ("group", "supergroup"):
+        await message.reply_text("استخدم /groupstats من داخل المجموعة.")
+        return
+    if not await _is_group_admin(context, chat.id, user.id):
+        await message.reply_text("إحصائيات المجموعة متاحة لمشرفيها فقط.")
+        return
+    stats = await _store(context).group_stats(chat.id)
+    await message.reply_text(
+        f"📊 إحصائيات {chat.title or 'المجموعة'}\n━━━━━━━━━━━━━━━━━━\n"
+        f"📨 منشورات ناجحة: {stats['sent']}\n"
+        f"⚠️ منشورات متعثرة: {stats['failed']}\n"
+        f"🎯 اختبارات: {stats['polls']}\n"
+        f"👥 إجابات مسجلة: {stats['answers']}"
+    )
+
+
+async def welcome_new_members(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    change = update.chat_member
+    if not change:
+        return
+    old_status = change.old_chat_member.status
+    new_member = change.new_chat_member
+    if new_member.status not in ("member", "administrator", "creator"):
+        return
+    if old_status in ("member", "administrator", "creator"):
+        return
+    chat = change.chat
+    if chat.type not in ("group", "supergroup"):
+        return
+    config = await _store(context).get(chat.id)
+    if not config["welcome_enabled"]:
+        return
+    user = new_member.user
+    if user.is_bot:
+        return
+    await context.application.bot_data["db"].upsert_user(user)
+    await context.bot.send_message(
+        chat_id=chat.id,
+        text=(
+            f"أهلاً بك {user.first_name or 'صديقنا'} في {chat.title or 'المجموعة'} 🌿\n"
+            "نسأل الله أن يجعل اجتماعنا على خير. ابدأ رحلتك مع أَثَر عبر /start."
+        ),
+        disable_web_page_preview=True,
+    )
+
+
+async def restore_community_jobs(application: Application) -> None:
+    store: CommunityStore = application.bot_data["community_store"]
+    for config in await store.all():
+        await _reschedule_group(application, config["chat_id"], config)
+
+
+def register_community_handlers(application: Application) -> None:
+    application.add_handler(CommandHandler("groupadmin", group_control_command))
+    application.add_handler(CommandHandler("groupstats", community_stats_command))
+    application.add_handler(CommandHandler("setmorning", set_morning_time))
+    application.add_handler(CommandHandler("setevening", set_evening_time))
+    application.add_handler(CommandHandler("setquiz", set_quiz_time))
+    application.add_handler(
+        CallbackQueryHandler(community_callback, pattern=r"^community:")
+    )
+    application.add_handler(
+        ChatMemberHandler(welcome_new_members, ChatMemberHandler.CHAT_MEMBER)
+    )
