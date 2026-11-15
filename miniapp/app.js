@@ -319,19 +319,21 @@
   }
 
   function getCounterKey(item) {
-    return item ? item.id + ":" + new Date().toISOString().slice(0, 10) : "daily";
+    const now = new Date();
+    const localDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+    return item ? item.id + ":" + localDate : "daily";
   }
 
   function setCounterItem(item) {
     state.counterItem = item || state.daily;
     if (!state.counterItem) return;
     const repeat = Number(state.counterItem.repeat);
-    state.counterTarget = Number.isFinite(repeat) && repeat > 0 ? repeat : 100;
+    state.counterTarget = Number.isFinite(repeat) && repeat > 0 ? repeat : 0;
     const key = getCounterKey(state.counterItem);
     state.counterValue = Number(state.counterData[key] || 0);
     els.counterDhikr.textContent = state.counterItem.text;
-    els.counterTarget.textContent = String(state.counterTarget);
-    $("#targetLabel").textContent = String(state.counterTarget);
+    els.counterTarget.textContent = state.counterTarget ? String(state.counterTarget) : "مفتوح";
+    $("#targetLabel").textContent = state.counterTarget ? String(state.counterTarget) : "مفتوح";
     updateCounter();
   }
 
