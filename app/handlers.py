@@ -13,7 +13,10 @@ def home_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("☀️ أذكار الصباح", callback_data="cat:morning"),
                 InlineKeyboardButton("🌙 أذكار المساء", callback_data="cat:evening"),
             ],
-            [InlineKeyboardButton("📿 أذكار متنوعة", callback_data="cat:general")],
+            [
+                InlineKeyboardButton("📿 أذكار متنوعة", callback_data="cat:general"),
+                InlineKeyboardButton("📜 حديث نبوي", callback_data="cat:hadith"),
+            ],
             [
                 InlineKeyboardButton("⭐ محفوظاتي", callback_data="bookmarks"),
                 InlineKeyboardButton("🌐 افتح المكتبة", callback_data="miniapp"),
@@ -89,16 +92,18 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     keyboard = []
-    for item in items:
-        count = item.get("repeat", 1)
-        keyboard.append([InlineKeyboardButton(f"⭐ حفظ: {item.get('title', 'ذكر')} · {count}", callback_data="save:" + item["id"])])
-    keyboard.append([InlineKeyboardButton("↩️ القائمة الرئيسية", callback_data="home")])
     lines = [f"{category['icon']} {category['title']}", ""]
     for item in items:
+        repeat = item.get("repeat")
+        label = f"⭐ حفظ: {item.get('title', 'ذكر')}"
+        if repeat:
+            label += f" · {repeat}"
+        keyboard.append([InlineKeyboardButton(label, callback_data="save:" + item["id"])])
+        lines.append(item["text"])
+        if repeat:
+            lines.append(f"التكرار: {repeat}")
         lines.extend(
             [
-                item["text"],
-                f"التكرار: {item.get('repeat', 1)}",
                 f"المصدر: {item['source']} — {item['reference']}",
                 f"الحكم: {item.get('grading') or 'راجع المصدر'}",
             ]
@@ -107,7 +112,12 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             lines.append("الفضل الوارد: " + item["virtue"])
         lines.append("المصدر: " + item["source_url"])
         lines.append("— — —")
-    await query.edit_message_text("\n".join(lines)[:4000], reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
+    keyboard.append([InlineKeyboardButton("↩️ القائمة الرئيسية", callback_data="home")])
+    await query.edit_message_text(
+        "\n".join(lines)[:4000],
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True,
+    )
 
 
 async def save_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
