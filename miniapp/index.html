@@ -3,49 +3,183 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#101a18">
-  <title>أَثَر | ATHAR</title>
+  <meta name="theme-color" content="#081510">
+  <meta name="description" content="أَثَر — رفيقك اليومي للأذكار والأحاديث الموثقة.">
+  <title>أَثَر | رفيق الذكر</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/miniapp/styles.css">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
-  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
-  <main class="app-shell">
+  <div class="grain" aria-hidden="true"></div>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+
+  <div class="app-shell">
     <header class="topbar">
-      <div class="brand-mark">أَثَر</div>
-      <div class="brand-copy"><strong>رفيق الذكر</strong><span>ذكرٌ موثّق، وقلبٌ مطمئن</span></div>
-      <button class="icon-button" id="themeButton" aria-label="تبديل المظهر">◐</button>
+      <a class="brand" href="#" data-home aria-label="أثر — الرئيسية">
+        <span class="brand-emblem"><span>أ</span></span>
+        <span class="brand-copy"><strong>أَثَر</strong><small>رفيق الذكر</small></span>
+      </a>
+      <div class="topbar-actions">
+        <span class="connection-status" id="connectionStatus"><i></i><span>يتصل بالمكتبة</span></span>
+        <button class="icon-button" id="themeButton" type="button" aria-label="تغيير المظهر" title="تغيير المظهر">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.5A8.5 8.5 0 0 1 8.5 3.8 8.7 8.7 0 1 0 20.2 15.5Z"/></svg>
+        </button>
+      </div>
     </header>
-    <section class="hero">
-      <div class="eyebrow">مساحتك اليومية للذكر</div>
-      <h1>اجعل لسانك<br><span>رطباً بذكر الله</span></h1>
-      <p>أذكار وأحاديث وأسئلة نافعة، في تجربة هادئة تجمع ما تحتاجه في مكان واحد.</p>
-      <div class="hero-meta"><span class="live-dot"></span> محتوى مرتب مع بيان المراجع</div>
+
+    <main id="mainContent">
+      <section class="hero" id="homeView" aria-labelledby="heroTitle">
+        <div class="hero-orbit orbit-one"></div><div class="hero-orbit orbit-two"></div>
+        <div class="hero-topline">
+          <span class="eyebrow"><i class="eyebrow-mark"></i> مساحتك اليومية للسكينة</span>
+          <span class="date-chip" id="todayLabel">اليوم</span>
+        </div>
+        <div class="hero-content">
+          <div class="hero-copy">
+            <p class="hero-kicker">بسم الله نبدأ</p>
+            <h1 id="heroTitle">خطوةٌ صغيرة،<br><em>وأثرٌ يبقى.</em></h1>
+            <p class="hero-description">اجعل للذكر موضعاً في يومك. أذكار وأحاديث بأصولها، في تجربة هادئة صُممت لترافقك.</p>
+            <button class="hero-cta" type="button" data-view="library">اكتشف مكتبتك <span>←</span></button>
+          </div>
+          <div class="hero-seal" aria-hidden="true">
+            <div class="seal-ring"><span class="seal-leaf">۞</span><span class="seal-word">أَثَر</span><span class="seal-sub">ذِكْرٌ وَنَفْع</span></div>
+          </div>
+        </div>
+        <div class="hero-bottom">
+          <span><i class="pulse-dot"></i> محتوى مرتبط بالمراجع</span>
+          <span class="hero-divider"></span>
+          <span id="catalogueSummary">نجهّز مكتبتك…</span>
+        </div>
+      </section>
+
+      <section class="quick-strip" aria-label="اختصارات">
+        <button class="quick-action quick-morning" type="button" data-category="morning">
+          <span class="quick-icon">☀</span><span><b>أذكار الصباح</b><small>بداية يومك</small></span><i>←</i>
+        </button>
+        <button class="quick-action quick-evening" type="button" data-category="evening">
+          <span class="quick-icon">☾</span><span><b>أذكار المساء</b><small>ختام يومك</small></span><i>←</i>
+        </button>
+      </section>
+
+      <section class="section-block" id="featuredSection">
+        <div class="section-heading">
+          <div><span class="eyebrow">وقفة اليوم</span><h2>ذكرٌ تتأمل معناه</h2></div>
+          <span class="section-index">01 <i></i></span>
+        </div>
+        <article class="featured-card" id="featuredCard">
+          <div class="featured-top"><span class="featured-icon">۞</span><span class="source-tag"><i></i> من السنة</span></div>
+          <span class="featured-title" id="dailyTitle">ذكر اليوم</span>
+          <p class="featured-text" id="dailyText">نجهّز الذكر…</p>
+          <div class="featured-bottom">
+            <span id="dailySource">—</span>
+            <div class="featured-actions">
+              <button type="button" class="text-action" id="dailySave">☆ حفظ</button>
+              <button type="button" class="copy-action" id="copyButton"><span>⧉</span> نسخ</button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="section-block" id="librarySection">
+        <div class="section-heading">
+          <div><span class="eyebrow">تصفّح بهدوء</span><h2>مكتبة أَثَر</h2></div>
+          <span class="section-index">02 <i></i></span>
+        </div>
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
+          <input id="searchInput" type="search" placeholder="ابحث عن ذكر، حديث أو كلمة…" autocomplete="off" aria-label="البحث في المكتبة">
+          <button id="clearSearch" type="button" aria-label="مسح البحث" hidden>×</button>
+          <kbd>⌕</kbd>
+        </label>
+        <div class="category-chips" id="categoryChips" aria-label="تصفية الأقسام"></div>
+        <div class="library-toolbar">
+          <span id="listHeading">كل المحتوى</span>
+          <span id="itemCount">—</span>
+        </div>
+        <div class="content-grid" id="contentList" aria-live="polite">
+          <div class="skeleton-card"></div><div class="skeleton-card"></div>
+        </div>
+        <button class="load-more" id="loadMore" type="button" hidden>عرض المزيد <span>↓</span></button>
+      </section>
+
+      <section class="section-block counter-section" id="counterSection">
+        <div class="section-heading">
+          <div><span class="eyebrow">مساحة للتسبيح</span><h2>مِسبحة أَثَر</h2></div>
+          <span class="section-index">03 <i></i></span>
+        </div>
+        <div class="counter-card">
+          <div class="counter-top"><span class="counter-caption">وردك الحالي</span><button type="button" id="counterReset" class="reset-action">إعادة ضبط ↺</button></div>
+          <h3 id="counterDhikr">سُبْحَانَ اللَّهِ وَبِحَمْدِهِ</h3>
+          <div class="counter-progress"><span id="counterProgress"></span></div>
+          <div class="counter-controls">
+            <div class="counter-readout"><strong id="counterValue">0</strong><small>من <span id="counterTarget">100</span></small></div>
+            <button class="counter-button" id="counterButton" type="button" aria-label="تسبيحة جديدة"><span>سَبِّح</span><small>اضغط للتسبيح</small></button>
+            <button class="counter-target" id="counterTargetButton" type="button">العدد: <b id="targetLabel">100</b> <span>⌄</span></button>
+          </div>
+          <p class="counter-hint" id="counterHint">ابدأ على مهل، واستحضر المعنى.</p>
+        </div>
+      </section>
+
+      <section class="section-block trust-section">
+        <div class="trust-card">
+          <span class="trust-symbol">✧</span>
+          <div><b>الأمانة قبل الكثرة</b><p>نحرص على إظهار المرجع ودرجة الحديث عند توفرها، ولا ننسب قولاً إلى مصدر دون بيان.</p></div>
+          <span class="trust-ornament">أَثَر</span>
+        </div>
+      </section>
+
+      <section class="section-block saved-view" id="savedView" hidden>
+        <div class="section-heading">
+          <div><span class="eyebrow">ما اخترته</span><h2>محفوظاتي</h2></div>
+          <span class="section-index">☆</span>
+        </div>
+        <div class="content-grid" id="savedList"></div>
+      </section>
+
+      <section class="section-block about-view" id="aboutView" hidden>
+        <div class="section-heading"><div><span class="eyebrow">عن المشروع</span><h2>أَثَر، نفعٌ يبقى</h2></div></div>
+        <div class="about-card">
+          <div class="about-emblem">أ</div>
+          <p>أَثَر مساحة هادئة للذكر والتعلّم، تجمع الأذكار والأحاديث مع مراجعها في واجهة بسيطة تحترم وقتك واهتمامك.</p>
+          <div class="about-rule"></div>
+          <div class="about-row"><span>الهوية</span><b>ذكر · علم · أثر</b></div>
+          <div class="about-row"><span>المراجع</span><b>تظهر مع كل مادة</b></div>
+          <div class="about-row"><span>الخصوصية</span><b>لا حاجة إلى حساب جديد</b></div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="التنقل الرئيسي">
+      <button type="button" class="nav-item is-active" data-view="home" aria-current="page"><span class="nav-icon">⌂</span><small>الرئيسية</small></button>
+      <button type="button" class="nav-item" data-view="library"><span class="nav-icon">▤</span><small>المكتبة</small></button>
+      <button type="button" class="nav-item" data-view="counter"><span class="nav-icon">◎</span><small>المسبحة</small></button>
+      <button type="button" class="nav-item" data-view="saved"><span class="nav-icon">☆</span><small>محفوظاتي</small><i id="savedBadge" hidden>0</i></button>
+      <button type="button" class="nav-item" data-view="about"><span class="nav-icon">⋯</span><small>المزيد</small></button>
+    </nav>
+  </div>
+
+  <div class="modal-backdrop" id="itemModal" hidden>
+    <section class="item-modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-grabber"></div>
+      <div class="modal-head"><span class="eyebrow" id="modalCategory">من المكتبة</span><button type="button" id="closeModal" class="icon-button" aria-label="إغلاق">×</button></div>
+      <h2 id="modalTitle">عنوان الذكر</h2>
+      <p class="modal-text" id="modalText"></p>
+      <div class="modal-meta" id="modalMeta"></div>
+      <p class="modal-virtue" id="modalVirtue" hidden></p>
+      <div class="modal-actions">
+        <button type="button" class="modal-primary" id="modalCounter">ابدأ التكرار <span>←</span></button>
+        <button type="button" class="modal-secondary" id="modalSave">☆ حفظ</button>
+        <button type="button" class="modal-secondary" id="modalCopy">نسخ</button>
+      </div>
+      <a class="source-link" id="sourceLink" href="#" target="_blank" rel="noopener noreferrer" hidden>فتح المصدر الأصلي ↗</a>
     </section>
-    <section class="section-heading">
-      <div><span class="eyebrow">ابحث بسرعة</span><h2>مكتبتك</h2></div>
-      <span class="section-note" id="itemCount">تحميل المحتوى…</span>
-    </section>
-    <label class="search-box">
-      <span>⌕</span>
-      <input id="searchInput" type="search" placeholder="ابحث عن ذكر أو حديث…" autocomplete="off">
-    </label>
-    <nav class="category-grid" id="categories" aria-label="أقسام الأذكار"></nav>
-    <section class="section-heading">
-      <div><span class="eyebrow">وقفة قصيرة</span><h2>ذكر اليوم</h2></div>
-      <span class="section-note">من السنة</span>
-    </section>
-    <article class="daily-card">
-      <div class="card-topline"><span>📿</span><span class="source-pill">مرجع موثّق</span></div>
-      <p class="dhikr-text" id="dailyText">جاري تحميل الذكر…</p>
-      <div class="card-footer"><span id="dailySource"></span><button id="copyButton">نسخ الذكر</button></div>
-    </article>
-    <section class="trust-note">
-      <span class="trust-icon">✦</span>
-      <div><strong>الأمانة قبل الكثرة</strong><p>نعرض اسم المرجع ورقمه بوضوح، ونراجع المادة قبل نشرها.</p></div>
-    </section>
-    <footer>أَثَر · نفعٌ يبقى</footer>
-  </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/miniapp/app.js"></script>
 </body>
 </html>
