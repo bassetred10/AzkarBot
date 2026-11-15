@@ -749,22 +749,12 @@ async def speed_arena_callback(
     )
 
 
-async def true_false_command(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+async def _send_true_false_poll(
+    chat, context: ContextTypes.DEFAULT_TYPE, category_id: str = "all"
 ) -> None:
-    message, chat = update.effective_message, update.effective_chat
-    if not message or not chat:
-        return
-    category_id = "all"
-    if context.args:
-        raw = context.args[0]
-        category_id = CATEGORY_ALIASES.get(raw, "")
-        if not category_id:
-            await message.reply_text("استخدم /truefalse [quran|seerah|hadith|prophets|worship|companions|manners]")
-            return
     question = _games(context).random_question(category_id)
-    correct_statement = random.choice((True, False))
-    if correct_statement:
+    statement_is_true = random.choice((True, False))
+    if statement_is_true:
         statement_answer = question["answer"]
     else:
         statement_answer = random.choice([
@@ -773,7 +763,7 @@ async def true_false_command(
         ])
     statement = question["options"][statement_answer]
     prompt = f"صح أم خطأ؟\n{question['question']}\n\n{statement}"
-    correct_index = 0 if correct_statement else 1
+    correct_index = 0 if statement_is_true else 1
     poll = await context.bot.send_poll(
         chat_id=chat.id,
         question=prompt[:300],
@@ -803,133 +793,44 @@ async def true_false_command(
     )
 
 
-async def _is_chat_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
+async def true_false_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message, chat = update.effective_message, update.effective_chat
+    if not message or not chat:
+        return
+    category_id = "all"
+    if context.args:
+        category_id = CATEGORY_ALIASES.get(context.args[0], "")
+        if not category_id:
+            await message.reply_text(
+                "استخدم /truefalse مع باب مثل quran أو seerah أو hadith."
+            )
+            return
     try:
-        member = await context.bot.get_chat_member(chat_id, user_id)
-        return member.status in ("administrator", "creator")
-    except TelegramError:
-        return False
+        await _send_true_false_poll(chat, context, category_id)
+    except TelegramError as exc:
+        logger.warning("Could not post True/False quiz in %s: %s", chat.id, exc)
+        await message.reply_text("تعذر نشر الاختبار. تحقق من صلاحيات البوت في المحادثة.")
 
 
-async def end_live_game_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message, user, chat = update.effective_message, update.effective_user, update.effective_chat
-    if not message or not user or not chat:
-        return
-    if chat.type not in ("group", "supergroup"):
-        await message.reply_text("استخدم هذا الأمر داخل المجموعة.")
-        return
-    session = await _store(context).active_for_chat(chat.id)
-    if not session:
-        await message.reply_text("لا توجد منافسة نشطة حالياً.")
-        return
-    if user.id != session["owner_id"] and not await _is_chat_admin(context, chat.id, user.id):
-        await message.reply_text("إيقاف المنافسة متاح لمن بدأها أو لمشرفي المجموعة.")
-        return
-    await _store(context).finish_session(session["session_id"], "cancelled")
-    _cancel_round_jobs(context.application, session["session_id"])
-    board = await _store(context).session_board(session["session_id"], 5)
-    final_text = "⏹ أُوقفت المنافسة بواسطة الإدارة.\n\n" + _board_text(board, "🏆 ترتيب هذه المنافسة")
-    await _safe_edit(context.application, session, final_text)
-    await message.reply_text("تم إيقاف المنافسة.")
-
-
-async def live_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def true_false_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     query = update.callback_query
-    if not query or not query.from_user or not query.message:
+    if not query or not query.message:
         return
+    parts = query.data.split(":")
+    category_id = parts[2] if len(parts) > 2 else "all"
+    if category_id != "all" and category_id not in CATEGORY_LABELS:
+        await query.answer("هذا الباب غير متاح.", show_alert=True)
+        return
+    await query.answer("جارٍ تجهيز سؤال صح أم خطأ...")
     try:
-        _, session_id, raw_round, raw_choice = query.data.split(":")
-        round_no, choice = int(raw_round), int(raw_choice)
-    except (ValueError, TypeError):
-        await query.answer("هذا الزر غير صالح.", show_alert=True)
-        return
-    store = _store(context)
-    session = await store.get_session(session_id)
-    if not session or session["chat_id"] != query.message.chat_id:
-        await query.answer("هذه الجولة غير متاحة.", show_alert=True)
-        return
-    if session["status"] != "active" or session["current_round"] != round_no:
-        await query.answer("انتهى وقت هذه الجولة.", show_alert=True)
-        return
-    question = _games(context).get(session["question_id"])
-    if not question or not 0 <= choice < len(question["options"]):
-        await query.answer("الخيار لم يعد متاحاً.", show_alert=True)
-        return
-    await context.application.bot_data["db"].upsert_user(query.from_user)
-    result = await store.record_answer(
-        session_id, round_no, query.from_user.id, choice,
-        choice == question["answer"],
-    )
-    if result == "duplicate":
-        await query.answer("إجابتك مسجلة بالفعل لهذه الجولة.", show_alert=True)
-        return
-    if result != "ok":
-        await query.answer("انتهى وقت الجولة. انتظر السؤال التالي.", show_alert=True)
-        return
-    await query.answer("✅ تم تسجيل اختيارك. سيتم تحديث عدّاد المشاركين مباشرة!")
-
-
-async def live_round_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
-    session_id = context.job.data
-    store: LiveGameStore = context.application.bot_data["live_store"]
-    session = await store.get_session(session_id)
-    if not session or session["status"] != "active":
-        return
-    games: GameCatalogue = context.application.bot_data["games"]
-    question = games.get(session["question_id"])
-    if not question:
-        _cancel_round_jobs(context.application, session_id)
-        await store.finish_session(session_id, "cancelled")
-        return
-    job_queue = context.application.job_queue
-    if job_queue:
-        for job in job_queue.get_jobs_by_name(f"athar-live-tick:{session_id}"):
-            job.schedule_removal()
-    stats = await store.round_stats(session_id, session["current_round"])
-    intro = _result_intro(question, stats)
-    if session["current_round"] >= session["total_rounds"]:
-        _cancel_round_jobs(context.application, session_id)
-        await store.finish_session(session_id)
-        board = await store.session_board(session_id, 5)
-        final_text = intro + "\n\n" + _board_text(board, "🏆 أبطال منافسة أَثَر")
-        await _safe_edit(context.application, session, final_text)
-        return
-
-    used_ids = json.loads(session["used_question_ids"] or "[]")
-    category_id = session.get("category_id") or "all"
-    next_question = games.random_question(
-        category_id=category_id,
-        exclude_ids=set(used_ids),
-    )
-    if next_question["id"] in used_ids:
-        used_ids = []
-    used_ids.append(next_question["id"])
-    next_deadline = time.time() + max(
-        5, int(session.get("round_seconds") or LIVE_ROUND_SECONDS)
-    )
-    advanced = await store.advance_session(
-        session_id, next_question["id"], used_ids, next_deadline
-    )
-    if not advanced:
-        return
-    fresh = await store.get_session(session_id)
-    await _safe_edit(
-        context.application,
-        fresh,
-        _question_text(fresh, next_question, 0, intro),
-        _question_keyboard(session_id, fresh["current_round"], next_question["options"]),
-    )
-    _schedule_round(context.application, session_id, next_deadline)
-
-
-async def restore_live_sessions(application: Application) -> None:
-    """Re-arm timers after a service restart; the session state remains in SQLite."""
-    store: LiveGameStore = application.bot_data["live_store"]
-    for session in await store.active_sessions():
-        if not session.get("message_id"):
-            await store.finish_session(session["session_id"], "cancelled")
-            continue
-        _schedule_round(application, session["session_id"], float(session["round_ends_at"]))
+        await _send_true_false_poll(query.message.chat, context, category_id)
+    except TelegramError as exc:
+        logger.warning("Could not post True/False quiz: %s", exc)
+        await query.message.reply_text("تعذر نشر الاختبار. حاول مرة أخرى بعد التحقق من صلاحيات البوت.")
 
 
 async def group_board_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1108,6 +1009,7 @@ async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             InlineKeyboardButton("🛡️ الصحابة", callback_data="live:solo:companions"),
         ],
         [InlineKeyboardButton("🌿 الأخلاق والآداب", callback_data="live:solo:manners")],
+        [InlineKeyboardButton("✅ صح أم خطأ", callback_data="live:truefalse:all", style="success")],
     ]
     if chat_type in ("group", "supergroup"):
         rows.extend([
@@ -1198,6 +1100,7 @@ def register_live_game_handlers(application: Application) -> None:
     application.add_handler(CallbackQueryHandler(start_live_category_callback, pattern=r"^arena:start:"))
     application.add_handler(CallbackQueryHandler(live_answer_callback, pattern=r"^lg:"))
     application.add_handler(CallbackQueryHandler(solo_quiz_callback, pattern=r"^live:solo(?::|$)"))
+    application.add_handler(CallbackQueryHandler(true_false_callback, pattern=r"^live:truefalse(?::|$)"))
     application.add_handler(PollAnswerHandler(poll_answer_handler))
     application.add_handler(PollHandler(poll_state_handler))
 
