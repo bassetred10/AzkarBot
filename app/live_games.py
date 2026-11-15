@@ -723,7 +723,7 @@ async def channel_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 chat_id=target["chat_id"],
                 question=question["question"][:300],
                 options=[str(option)[:100] for option in question["options"][:10]],
-                is_anonymous=False,
+                is_anonymous=True,
                 allows_revoting=False,
                 type="quiz",
                 correct_option_ids=[question["answer"]],
@@ -732,7 +732,10 @@ async def channel_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 hide_results_until_closes=True,
             )
             if poll_message.poll:
-                await store.register_poll(poll_message.poll.id, target["chat_id"], question["id"])
+                await store.register_poll(
+                    poll_message.poll.id, target["chat_id"], question["id"],
+                    is_anonymous=True,
+                )
             await context.application.bot_data["db"].log_delivery(
                 target["chat_id"], "channel_quiz", "sent"
             )
@@ -820,9 +823,9 @@ async def game_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "⚡ تحدٍ فردي: أرسل /quiz في الخاص.\n\n"
         "👥 منافسة المجموعات: أضف البوت إلى مجموعتك ثم اكتب /livegame. "
         "تبدأ 5 جولات، لكل جولة 25 ثانية، مع نقاط للسرعة والإجابة الصحيحة.\n\n"
-        "📣 تحديات القنوات: تنشر الإدارة مسابقات Telegram Quiz أصلية "
-        "بوقت تصويت ونتائج قابلة للإحصاء.\n\n"
-        "🏆 /gameboard — ترتيب المجموعة\n🌍 /liveboard — الترتيب العام للمنافسات والقنوات\n"
+        "📣 تحديات القنوات: اختبارات Telegram Quiz بتصويت مجهول وإحصاءات إجمالية؛ "
+        "في المجموعات تُسجّل نقاط كل لاعب باسمه.\n\n"
+        "🏆 /gameboard — ترتيب المجموعة\n🌍 /liveboard — ترتيب منافسات المجموعات\n"
         "⏹ /endgame — إيقاف المنافسة (للبادئ أو مشرفي المجموعة)"
     )
     keyboard = InlineKeyboardMarkup([
@@ -897,11 +900,12 @@ async def _publish_native_quiz_targets(
     sent = failed = 0
     for target in targets:
         try:
+            is_anonymous = target["chat_type"] == "channel"
             poll_message = await context.bot.send_poll(
                 chat_id=target["chat_id"],
                 question=question["question"][:300],
                 options=[str(option)[:100] for option in question["options"][:10]],
-                is_anonymous=False,
+                is_anonymous=is_anonymous,
                 allows_revoting=False,
                 type="quiz",
                 correct_option_ids=[question["answer"]],
@@ -911,7 +915,10 @@ async def _publish_native_quiz_targets(
             )
             if poll_message.poll:
                 await store.register_poll(
-                    poll_message.poll.id, target["chat_id"], question["id"]
+                    poll_message.poll.id,
+                    target["chat_id"],
+                    question["id"],
+                    is_anonymous=is_anonymous,
                 )
             await db.log_delivery(target["chat_id"], "native_quiz", "sent")
             sent += 1
@@ -976,6 +983,8 @@ async def _live_stats(store: LiveGameStore) -> dict[str, int]:
         "group_answers": "SELECT COUNT(*) AS n FROM live_game_answers",
         "polls": "SELECT COUNT(*) AS n FROM channel_quiz_polls",
         "poll_answers": "SELECT COUNT(*) AS n FROM channel_quiz_answers",
+        "channel_votes": "SELECT COALESCE(SUM(total_voters), 0) AS n FROM channel_quiz_polls WHERE is_anonymous=1",
+        "channel_correct": "SELECT COALESCE(SUM(correct_votes), 0) AS n FROM channel_quiz_polls WHERE is_anonymous=1",
     }
     for key, sql in queries.items():
         cursor = await store.conn.execute(sql)
@@ -1005,8 +1014,10 @@ async def live_admin_stats_callback(
         f"🎮 المنافسات الجماعية: {stats['sessions']}\n"
         f"🟢 نشطة الآن: {stats['active']}\n"
         f"🗳 إجابات الجولات: {stats['group_answers']}\n"
-        f"📣 اختبارات القنوات: {stats['polls']}\n"
-        f"👥 أصوات القنوات: {stats['poll_answers']}\n"
+        f"📣 الاختبارات المنشورة: {stats['polls']}\n"
+        f"👥 إجابات المسابقات المعرّفة: {stats['poll_answers']}\n"
+        f"📊 تصويت القنوات المجهول: {stats['channel_votes']}\n"
+        f"✅ الصحيحة في القنوات: {stats['channel_correct']}\n"
         f"🧠 إجابات فردية: {db_stats['game_answers']}"
     )
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
