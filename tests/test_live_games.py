@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 
 from app.database import Database
-from app.live_games import LiveGameStore, live_round_timeout, register_live_game_handlers
+from app.live_games import (LiveGameStore, live_answer_callback, live_round_timeout, restore_live_sessions, register_live_game_handlers)
 
 
 class LiveGameStoreTests(unittest.IsolatedAsyncioTestCase):
@@ -240,6 +240,49 @@ class LiveRoundHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session["status"], "active")
         self.assertTrue(self.bot.edits)
         self.assertTrue(any(job[0].__name__ == "live_round_timeout" for job in self.queue.jobs))
+
+    async def test_live_answer_is_recorded_once(self):
+        user = SimpleNamespace(
+            id=202, username="second_player",
+            first_name="Second", language_code="ar",
+        )
+        await self.store.create_session(
+            "session-answer", -100656, "Answer Group", 101, 2,
+            "q001", time.time() + 30, "quran", 25
+        )
+        await self.store.set_message_id("session-answer", 767)
+        query = SimpleNamespace(
+            data="lg:session-answer:1:0",
+            from_user=user,
+            message=SimpleNamespace(chat_id=-100656),
+            answers=[],
+        )
+        async def answer(text, **kwargs):
+            query.answers.append(text)
+        query.answer = answer
+        update = SimpleNamespace(callback_query=query)
+        self.application.bot_data["db"] = self.db
+
+        await live_answer_callback(update, self.context)
+        await live_answer_callback(update, self.context)
+
+        stats = await self.store.round_stats("session-answer", 1)
+        self.assertEqual(stats, {"answered": 1, "correct": 1})
+        self.assertIn("تم تسجيل إجابتك", query.answers[0])
+        self.assertIn("من قبل", query.answers[1])
+
+    async def test_restore_live_sessions_reschedules_active_round(self):
+        await self.store.create_session(
+            "session-restore", -100657, "Restore Group", 101, 2,
+            "q001", time.time() + 30, "quran", 25
+        )
+        await self.store.set_message_id("session-restore", 768)
+
+        await restore_live_sessions(self.application)
+
+        names = [job[3] for job in self.queue.jobs]
+        self.assertIn("athar-live-round:session-restore", names)
+        self.assertIn("athar-live-tick:session-restore", names)
 
     async def test_expired_final_round_finishes_and_displays_board(self):
         await self.store.create_session(
