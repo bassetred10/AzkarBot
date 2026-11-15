@@ -293,16 +293,27 @@ class LiveGameStore:
         question_id: str,
         used_ids: list[str],
         deadline: float,
+        expected_round: int | None = None,
+        expected_deadline: float | None = None,
     ) -> bool:
         session = await self.get_session(session_id)
         if not session or session["status"] != "active":
             return False
+        expected_round = session["current_round"] if expected_round is None else expected_round
+        expected_deadline = (
+            float(session["round_ends_at"])
+            if expected_deadline is None else float(expected_deadline)
+        )
         cursor = await self.conn.execute(
             """UPDATE live_game_sessions
                SET current_round=current_round+1, question_id=?,
                    used_question_ids=?, round_ends_at=?
-               WHERE session_id=? AND status='active'""",
-            (question_id, json.dumps(used_ids), deadline, session_id),
+               WHERE session_id=? AND status='active'
+                 AND current_round=? AND round_ends_at=?""",
+            (
+                question_id, json.dumps(used_ids), deadline,
+                session_id, expected_round, expected_deadline,
+            ),
         )
         await self.conn.commit()
         return cursor.rowcount == 1
@@ -1107,6 +1118,212 @@ async def live_leaderboard_callback(
         ]),
     )
     raise ApplicationHandlerStop
+
+
+async def live_answer_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.from_user or not query.message:
+        return
+    parts = query.data.split(":")
+    if len(parts) != 4:
+        await query.answer("انتهت صلاحية هذا الاختيار.", show_alert=True)
+        return
+    session_id = parts[1]
+    try:
+        round_no = int(parts[2])
+        choice = int(parts[3])
+    except ValueError:
+        await query.answer("اختيار غير صالح.", show_alert=True)
+        return
+
+    store = _store(context)
+    session = await store.get_session(session_id)
+    if (
+        not session
+        or session["chat_id"] != query.message.chat_id
+        or session["status"] != "active"
+        or session["current_round"] != round_no
+        or time.time() >= float(session["round_ends_at"])
+    ):
+        await query.answer("انتهت هذه الجولة أو تغيّر السؤال.", show_alert=True)
+        return
+
+    question = _games(context).get(session["question_id"])
+    if not question or not 0 <= choice < len(question["options"]):
+        await query.answer("هذا السؤال لم يعد متاحاً.", show_alert=True)
+        return
+
+    await context.application.bot_data["db"].upsert_user(query.from_user)
+    result = await store.record_answer(
+        session_id,
+        round_no,
+        query.from_user.id,
+        choice,
+        choice == question["answer"],
+    )
+    if result == "duplicate":
+        await query.answer("تم تسجيل إجابتك من قبل.", show_alert=True)
+        return
+    if result != "ok":
+        await query.answer("انتهى وقت الإجابة.", show_alert=True)
+        return
+
+    stats = await store.round_stats(session_id, round_no)
+    await query.answer("✅ تم تسجيل إجابتك. تُكشف النتيجة عند انتهاء الجولة.")
+    await _safe_edit(
+        context.application,
+        session,
+        _question_text(session, question, stats["answered"]),
+        _question_keyboard(session_id, round_no, question["options"]),
+    )
+
+
+async def live_round_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
+    session_id = str(context.job.data)
+    application = context.application
+    store: LiveGameStore = application.bot_data["live_store"]
+    session = await store.get_session(session_id)
+    if not session or session["status"] != "active":
+        return
+
+    remaining = float(session["round_ends_at"]) - time.time()
+    if remaining > 0:
+        _schedule_round(application, session_id, float(session["round_ends_at"]))
+        return
+
+    games = application.bot_data["games"]
+    question = games.get(session["question_id"])
+    if question is None:
+        await store.finish_session(session_id, "cancelled")
+        _cancel_round_jobs(application, session_id)
+        logger.error("Live game %s references missing question %s", session_id, session["question_id"])
+        return
+
+    stats = await store.round_stats(session_id, session["current_round"])
+    round_result = _result_intro(question, stats)
+
+    if session["current_round"] >= session["total_rounds"]:
+        await store.finish_session(session_id)
+        _cancel_round_jobs(application, session_id)
+        board = await store.session_board(session_id, 10)
+        final_text = (
+            round_result
+            + "\n\n🏆 انتهت بطولة أَثَر"
+            + "\n━━━━━━━━━━━━━━━━━━\n"
+            + _board_text(board, "ترتيب البطولة")
+        )
+        await _safe_edit(application, session, final_text[:3900], None)
+        return
+
+    try:
+        used_ids = set(json.loads(session.get("used_question_ids") or "[]"))
+    except (TypeError, ValueError):
+        used_ids = {session["question_id"]}
+    next_question = games.random_question(
+        session.get("category_id") or "all",
+        used_ids,
+    )
+    used_ids.add(next_question["id"])
+    round_seconds = max(5, int(session.get("round_seconds") or LIVE_ROUND_SECONDS))
+    deadline = time.time() + round_seconds
+    advanced = await store.advance_session(
+        session_id,
+        next_question["id"],
+        sorted(used_ids),
+        deadline,
+        expected_round=int(session["current_round"]),
+        expected_deadline=float(session["round_ends_at"]),
+    )
+    if not advanced:
+        return
+
+    next_session = await store.get_session(session_id)
+    if not next_session:
+        return
+    next_text = (
+        round_result
+        + "\n\n"
+        + _question_text(next_session, next_question)
+    )
+    await _safe_edit(
+        application,
+        next_session,
+        next_text[:3900],
+        _question_keyboard(
+            session_id,
+            next_session["current_round"],
+            next_question["options"],
+        ),
+    )
+    _schedule_round(application, session_id, deadline)
+
+
+async def end_live_game_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+    if not message or not user or not chat:
+        return
+    if chat.type not in ("group", "supergroup"):
+        await message.reply_text("استخدم /endgame داخل المجموعة التي تجري فيها البطولة.")
+        return
+
+    store = _store(context)
+    session = await store.active_for_chat(chat.id)
+    if not session:
+        await message.reply_text("لا توجد بطولة نشطة في هذه المجموعة.")
+        return
+
+    settings = context.application.bot_data.get("settings")
+    allowed = user.id == session["owner_id"] or (
+        settings is not None and user.id in settings.admin_ids
+    )
+    if not allowed:
+        try:
+            member = await context.bot.get_chat_member(chat.id, user.id)
+            allowed = member.status in ("administrator", "creator")
+        except TelegramError:
+            allowed = False
+    if not allowed:
+        await message.reply_text("إيقاف البطولة متاح لمن بدأها أو لمشرفي المجموعة فقط.")
+        return
+
+    question = _games(context).get(session["question_id"])
+    stats = await store.round_stats(session["session_id"], session["current_round"])
+    await store.finish_session(session["session_id"], "cancelled")
+    _cancel_round_jobs(context.application, session["session_id"])
+    board = await store.session_board(session["session_id"], 10)
+    summary = "🛑 أُوقفت البطولة قبل اكتمالها."
+    if question:
+        summary += "\n" + _result_intro(question, stats)
+    summary += "\n\n" + _board_text(board, "الترتيب حتى الآن")
+    await _safe_edit(
+        context.application,
+        session,
+        summary[:3900],
+        None,
+    )
+    await message.reply_text("تم إيقاف البطولة.")
+
+
+async def restore_live_sessions(application: Application) -> None:
+    store: LiveGameStore = application.bot_data["live_store"]
+    games: GameCatalogue = application.bot_data["games"]
+    for session in await store.active_sessions():
+        if not session.get("message_id") or games.get(session["question_id"]) is None:
+            await store.finish_session(session["session_id"], "cancelled")
+            _cancel_round_jobs(application, session["session_id"])
+            logger.warning("Cancelled incomplete live game session %s during recovery", session["session_id"])
+            continue
+        _schedule_round(
+            application,
+            session["session_id"],
+            float(session["round_ends_at"]),
+        )
 
 
 def register_live_game_handlers(application: Application) -> None:
