@@ -582,6 +582,21 @@ async def on_bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await db.add_target(chat.id, chat.title or str(chat.id), chat.type)
             if community:
                 await community.ensure_group(chat.id, chat.title or "")
+            if change.old_chat_member.status in ("left", "kicked"):
+                try:
+                    await context.bot.send_message(
+                        chat_id=chat.id,
+                        text=(
+                            "🌿 أهلاً بكم، أنا أَثَر.\n"
+                            "لمشرفي المجموعة: /groupadmin لفتح مركز التحكم.\n"
+                            "يمكنكم تفعيل أذكار الصباح والمساء وسؤال اليوم، "
+                            "وتحديد مواعيد النشر بتوقيت الجزائر.\n"
+                            "ابدأوا الألعاب عبر زر «ساحة أَثَر» أو /livegame."
+                        ),
+                        disable_web_page_preview=True,
+                    )
+                except TelegramError:
+                    logger.warning("Could not send group onboarding message: %s", chat.id)
             logger.info("Registered group and initialized its controls: %s", chat.id)
         elif status in ("left", "kicked"):
             await db.remove_target(chat.id)
