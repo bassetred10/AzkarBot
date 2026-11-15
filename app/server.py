@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import Application
 
 from app.config import ROOT_DIR, get_settings
@@ -59,6 +59,18 @@ async def lifespan(api: FastAPI):
     register_live_game_handlers(telegram_app)
     register_community_handlers(telegram_app)
     await telegram_app.initialize()
+    await telegram_app.bot.set_my_commands([
+        BotCommand("start", "القائمة الرئيسية"),
+        BotCommand("help", "دليل الاستخدام"),
+        BotCommand("quiz", "سؤال إسلامي"),
+        BotCommand("truefalse", "صح أم خطأ"),
+        BotCommand("livegame", "بطولة جماعية"),
+        BotCommand("speedgame", "سباق السرعة"),
+        BotCommand("gameboard", "ترتيب المجموعة"),
+        BotCommand("liveboard", "ترتيب اللاعبين"),
+        BotCommand("groupadmin", "مركز تحكم المجموعة"),
+        BotCommand("myid", "معرفة رقم حسابك"),
+    ])
     await telegram_app.start()
     await restore_live_sessions(telegram_app)
     await restore_community_jobs(telegram_app)
