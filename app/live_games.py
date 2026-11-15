@@ -402,11 +402,21 @@ def _question_text(
     )
     if intro:
         header = intro + "\n\n" + header
+    remaining = max(
+        0,
+        min(
+            LIVE_ROUND_SECONDS,
+            math.ceil(float(session["round_ends_at"]) - time.time()),
+        ),
+    )
+    blocks = 10
+    filled = max(0, min(blocks, math.ceil((remaining / LIVE_ROUND_SECONDS) * blocks)))
+    progress = "🟩" * filled + "⬜" * (blocks - filled)
     return (
         header
         + f"🎯 {question['question']}\n\n"
         + "\n".join(f"{i + 1}️⃣ {option}" for i, option in enumerate(question["options"]))
-        + f"\n\n⏳ أمامك {LIVE_ROUND_SECONDS} ثانية"
+        + f"\n\n⏳ المتبقي: {remaining} ثانية  {progress}"
         + f"\n👥 المشاركون: {answered}"
         + "\n🔒 تُكشف الإجابة والشرح عند انتهاء الجولة"
     )
@@ -444,19 +454,66 @@ def _result_intro(question: dict[str, Any], stats: dict[str, int]) -> str:
     )
 
 
+def _cancel_round_jobs(application: Application, session_id: str) -> None:
+    job_queue = application.job_queue
+    if not job_queue:
+        return
+    for suffix in ("round", "tick"):
+        name = f"athar-live-{suffix}:{session_id}"
+        for job in job_queue.get_jobs_by_name(name):
+            job.schedule_removal()
+
+
 def _schedule_round(application: Application, session_id: str, deadline: float) -> None:
     job_queue = application.job_queue
     if job_queue is None:
         raise RuntimeError("JobQueue is unavailable; install python-telegram-bot[job-queue]")
-    name = f"athar-live-round:{session_id}"
-    for job in job_queue.get_jobs_by_name(name):
-        job.schedule_removal()
+    _cancel_round_jobs(application, session_id)
+    remaining = max(0.1, deadline - time.time())
     job_queue.run_once(
         live_round_timeout,
-        when=max(0.1, deadline - time.time()),
+        when=remaining,
         data=session_id,
-        name=name,
+        name=f"athar-live-round:{session_id}",
     )
+    if remaining > 1:
+        job_queue.run_once(
+            live_countdown_tick,
+            when=min(5.0, remaining),
+            data=session_id,
+            name=f"athar-live-tick:{session_id}",
+        )
+
+
+async def live_countdown_tick(context: ContextTypes.DEFAULT_TYPE) -> None:
+    session_id = context.job.data
+    application = context.application
+    store: LiveGameStore = application.bot_data["live_store"]
+    session = await store.get_session(session_id)
+    if not session or session["status"] != "active":
+        return
+    remaining = float(session["round_ends_at"]) - time.time()
+    if remaining <= 1:
+        return
+    question = application.bot_data["games"].get(session["question_id"])
+    if not question:
+        return
+    stats = await store.round_stats(session_id, session["current_round"])
+    await _safe_edit(
+        application,
+        session,
+        _question_text(session, question, stats["answered"]),
+        _question_keyboard(session_id, session["current_round"], question["options"]),
+    )
+    job_queue = application.job_queue
+    remaining = float(session["round_ends_at"]) - time.time()
+    if job_queue and remaining > 1:
+        job_queue.run_once(
+            live_countdown_tick,
+            when=min(5.0, max(0.5, remaining)),
+            data=session_id,
+            name=f"athar-live-tick:{session_id}",
+        )
 
 
 async def _safe_edit(application: Application, session: dict[str, Any], text: str, markup=None) -> bool:
@@ -565,13 +622,7 @@ async def end_live_game_command(update: Update, context: ContextTypes.DEFAULT_TY
         await message.reply_text("إيقاف المنافسة متاح لمن بدأها أو لمشرفي المجموعة.")
         return
     await _store(context).finish_session(session["session_id"], "cancelled")
-    job_queue = context.application.job_queue
-    if job_queue:
-        for name in (
-            f"athar-live-round:{session['session_id']}",
-        ):
-            for job in job_queue.get_jobs_by_name(name):
-                job.schedule_removal()
+    _cancel_round_jobs(context.application, session["session_id"])
     board = await _store(context).session_board(session["session_id"], 5)
     final_text = "⏹ أُوقفت المنافسة بواسطة الإدارة.\n\n" + _board_text(board, "🏆 ترتيب هذه المنافسة")
     await _safe_edit(context.application, session, final_text)
@@ -611,16 +662,7 @@ async def live_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if result != "ok":
         await query.answer("انتهى وقت الجولة. انتظر السؤال التالي.", show_alert=True)
         return
-    await query.answer("✅ تم تسجيل اختيارك. انتظر كشف النتيجة!")
-    stats = await store.round_stats(session_id, round_no)
-    fresh = await store.get_session(session_id)
-    if fresh:
-        await _safe_edit(
-            context.application,
-            fresh,
-            _question_text(fresh, question, stats["answered"]),
-            _question_keyboard(session_id, round_no, question["options"]),
-        )
+    await query.answer("✅ تم تسجيل اختيارك. سيتم تحديث عدّاد المشاركين مباشرة!")
 
 
 async def live_round_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -632,11 +674,17 @@ async def live_round_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
     games: GameCatalogue = context.application.bot_data["games"]
     question = games.get(session["question_id"])
     if not question:
+        _cancel_round_jobs(context.application, session_id)
         await store.finish_session(session_id, "cancelled")
         return
+    job_queue = context.application.job_queue
+    if job_queue:
+        for job in job_queue.get_jobs_by_name(f"athar-live-tick:{session_id}"):
+            job.schedule_removal()
     stats = await store.round_stats(session_id, session["current_round"])
     intro = _result_intro(question, stats)
     if session["current_round"] >= session["total_rounds"]:
+        _cancel_round_jobs(context.application, session_id)
         await store.finish_session(session_id)
         board = await store.session_board(session_id, 5)
         final_text = intro + "\n\n" + _board_text(board, "🏆 أبطال منافسة أَثَر")
