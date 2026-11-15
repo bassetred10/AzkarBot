@@ -629,9 +629,7 @@ async def on_bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             if community:
                 await community.ensure_group(chat.id, chat.title or "")
             logger.info("Registered channel with posting permission: %s", chat.id)
-        elif status in ("left", "kicked") or (
-            status == "administrator" and not can_publish
-        ):
+        else:
             await db.remove_target(chat.id)
             if community:
                 await community.deactivate_group(chat.id)
