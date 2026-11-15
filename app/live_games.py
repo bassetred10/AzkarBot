@@ -944,7 +944,7 @@ async def publish_live_quiz_command(
     sent, failed = await _publish_native_quiz_targets(context)
     await message.reply_text(
         f"🎯 تقرير نشر المسابقة\n✅ أُرسلت إلى: {sent}\n⚠️ تعذّر: {failed}"
-        "\nالتصويت مفتوح 90 ثانية، وتُجمع نتائج المشاركين تلقائياً."
+        "\nالتصويت مفتوح 90 ثانية: أسماء ونقاط في المجموعات، وإحصاءات مجهولة في القنوات."
     )
 
 
@@ -1072,7 +1072,7 @@ async def enhanced_help_command(
         "/gameboard — ترتيب مجموعتك\n"
         "/liveboard — الترتيب العام\n"
         "/endgame — إيقاف منافسة المجموعة\n"
-        "/channelboard — ترتيب اختبارات القنوات\n"
+        "/channelboard — إحصائيات تصويت القنوات المجهول\n"
         "/myid — رقم حسابك\n"
         "/admin — لوحة الإدارة للمصرّح لهم"
     )
