@@ -566,12 +566,22 @@ async def on_bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     chat = change.chat
     status = change.new_chat_member.status
     db: Database = context.application.bot_data["db"]
+    community = context.application.bot_data.get("community_store")
     if chat.type in ("group", "supergroup"):
         if status in ("member", "administrator", "creator"):
             await db.add_target(chat.id, chat.title or str(chat.id), chat.type)
-            logger.info("Registered group as a publishing target: %s", chat.id)
+            if community:
+                await community.ensure_group(chat.id, chat.title or "")
+            logger.info("Registered group and initialized its controls: %s", chat.id)
         elif status in ("left", "kicked"):
             await db.remove_target(chat.id)
+            if community:
+                await community.deactivate_group(chat.id)
+            queue = context.application.job_queue
+            if queue:
+                for kind in ("morning", "evening", "quiz"):
+                    for job in queue.get_jobs_by_name(f"athar-community:{chat.id}:{kind}"):
+                        job.schedule_removal()
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
