@@ -256,16 +256,25 @@ class LiveGameStore:
     async def group_board(self, chat_id: int, limit: int = 10) -> list[dict[str, Any]]:
         cursor = await self.conn.execute(
             """SELECT u.telegram_id, u.first_name, u.username,
-                      SUM(a.points) AS score, SUM(a.is_correct) AS correct,
+                      SUM(scores.points) AS score,
+                      SUM(scores.is_correct) AS correct,
                       COUNT(*) AS answered
-               FROM live_game_answers a
-               JOIN live_game_sessions s ON s.session_id=a.session_id
-               JOIN users u ON u.telegram_id=a.telegram_id
-               WHERE s.chat_id=?
+               FROM (
+                   SELECT a.telegram_id, a.points, a.is_correct
+                   FROM live_game_answers a
+                   JOIN live_game_sessions s ON s.session_id=a.session_id
+                   WHERE s.chat_id=?
+                   UNION ALL
+                   SELECT a.telegram_id, a.points, a.is_correct
+                   FROM channel_quiz_answers a
+                   JOIN channel_quiz_polls p ON p.poll_id=a.poll_id
+                   WHERE p.chat_id=? AND p.is_anonymous=0
+               ) AS scores
+               JOIN users u ON u.telegram_id=scores.telegram_id
                GROUP BY u.telegram_id
                ORDER BY score DESC, correct DESC, answered DESC, u.telegram_id
                LIMIT ?""",
-            (chat_id, limit),
+            (chat_id, chat_id, limit),
         )
         return [dict(row) for row in await cursor.fetchall()]
 
