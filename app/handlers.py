@@ -14,8 +14,8 @@ from app.games import GameCatalogue
 logger = logging.getLogger("athar.handlers")
 
 
-def home_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
+def home_keyboard(group_context: bool = False) -> InlineKeyboardMarkup:
+    rows = [
         [
             InlineKeyboardButton("☀️ أذكار الصباح", callback_data="cat:morning"),
             InlineKeyboardButton("🌙 أذكار المساء", callback_data="cat:evening"),
@@ -32,10 +32,20 @@ def home_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⭐ محفوظاتي", callback_data="bookmarks"),
             InlineKeyboardButton("🌿 مكتبتي", callback_data="miniapp"),
         ],
-        [InlineKeyboardButton("🏘 مركز تحكم المجموعة", callback_data="community:open", style="primary")],
-        [InlineKeyboardButton("📊 نقاطي", callback_data="my_score", style="primary"),
-         InlineKeyboardButton("ℹ️ عن أَثَر", callback_data="about")],
+    ]
+    if group_context:
+        rows.append([
+            InlineKeyboardButton(
+                "🏘 مركز تحكم المجموعة",
+                callback_data="community:open",
+                style="primary",
+            )
+        ])
+    rows.append([
+        InlineKeyboardButton("📊 نقاطي", callback_data="my_score", style="primary"),
+        InlineKeyboardButton("ℹ️ عن أَثَر", callback_data="about"),
     ])
+    return InlineKeyboardMarkup(rows)
 
 
 def admin_keyboard() -> InlineKeyboardMarkup:
@@ -118,7 +128,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"أهلاً {user.first_name or 'بك'} في أَثَر 🌿\n"
         "مساحتك للذكر والتعلّم والمسابقات النافعة.\n\n"
         "اختر ما تحب من القائمة:",
-        reply_markup=home_keyboard(),
+        reply_markup=home_keyboard(message.chat.type in ("group", "supergroup")),
     )
 
 
@@ -211,7 +221,10 @@ async def home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if query:
         await query.answer()
         try:
-            await query.edit_message_text("القائمة الرئيسية — اختر ما تحتاجه:", reply_markup=home_keyboard())
+            await query.edit_message_text(
+                "القائمة الرئيسية — اختر ما تحتاجه:",
+                reply_markup=home_keyboard(query.message.chat.type in ("group", "supergroup")),
+            )
         except BadRequest as exc:
             if "Message is not modified" not in str(exc):
                 raise
