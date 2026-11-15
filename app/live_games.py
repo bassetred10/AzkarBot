@@ -897,7 +897,11 @@ async def channel_quiz_command(update: Update, context: ContextTypes.DEFAULT_TYP
     if not user or not message:
         return
     if user.id not in settings.admin_ids:
-        await message.reply_text("هذا الأمر مخصص لإدارة أَثَر.")
+        await message.reply_text(
+            "إدارة النشر العام غير مهيّأة بعد. أرسل /myid ثم أضف رقمك إلى متغير ADMIN_IDS في إعدادات Render أو ملف .env، وبعدها أعد تشغيل البوت."
+            if not settings.admin_ids
+            else "هذا الأمر مخصص لمالك البوت المضاف ضمن ADMIN_IDS."
+        )
         return
     targets = await context.application.bot_data["db"].list_targets()
     channels = [target for target in targets if target["chat_type"] == "channel"]
@@ -1173,7 +1177,11 @@ async def publish_live_quiz_command(
     if not user or not message:
         return
     if user.id not in settings.admin_ids:
-        await message.reply_text("هذا الأمر مخصص لإدارة أَثَر.")
+        await message.reply_text(
+            "إدارة النشر العام غير مهيّأة بعد. أرسل /myid ثم أضف رقمك إلى متغير ADMIN_IDS في إعدادات Render أو ملف .env، وبعدها أعد تشغيل البوت."
+            if not settings.admin_ids
+            else "هذا الأمر مخصص لمالك البوت المضاف ضمن ADMIN_IDS."
+        )
         return
     sent, failed = await _publish_native_quiz_targets(context)
     await message.reply_text(
