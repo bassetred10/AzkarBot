@@ -1,7 +1,10 @@
 import unittest
+from datetime import timedelta
 from types import SimpleNamespace
+from unittest.mock import patch
+from zoneinfo import ZoneInfoNotFoundError
 
-from app.community import CommunityStore, _send_community_quiz
+from app.community import CommunityStore, DEFAULT_TIMEZONE, _get_timezone, _send_community_quiz
 from app.database import Database
 from app.live_games import LiveGameStore
 
@@ -86,6 +89,34 @@ class CommunityStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first["failed"], 1)
         self.assertEqual(second["sent"], 0)
         self.assertEqual(second["failed"], 0)
+
+    async def test_group_statistics_include_live_competitions_and_players(self):
+        player = SimpleNamespace(
+            id=321, username="athar_player", first_name="Player", language_code="ar"
+        )
+        await self.db.upsert_user(player)
+        await self.live_store.create_session(
+            "stats-live-001", -100009, "Stats group", 999, 3,
+            "q001", __import__("time").time() + 60,
+        )
+        await self.live_store.record_answer(
+            "stats-live-001", 1, player.id, 0, True
+        )
+
+        stats = await self.store.group_stats(-100009)
+
+        self.assertEqual(stats["games"], 1)
+        self.assertEqual(stats["game_answers"], 1)
+        self.assertEqual(stats["game_players"], 1)
+
+    def test_algeria_timezone_has_safe_fallback_without_system_tzdata(self):
+        with patch(
+            "app.community.ZoneInfo",
+            side_effect=ZoneInfoNotFoundError(DEFAULT_TIMEZONE),
+        ):
+            zone = _get_timezone(DEFAULT_TIMEZONE)
+
+        self.assertEqual(zone.utcoffset(None), timedelta(hours=1))
 
 
 class _FakeQuizBot:
