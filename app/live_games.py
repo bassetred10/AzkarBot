@@ -1131,6 +1131,7 @@ def register_live_game_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("liveboard", liveboard_command))
     application.add_handler(CommandHandler("publishlivequiz", publish_live_quiz_command))
     application.add_handler(CallbackQueryHandler(live_admin_stats_callback, pattern=r"^adm:stats$"), group=-1)
+    application.add_handler(CallbackQueryHandler(live_admin_channels_callback, pattern=r"^adm:channels$"), group=-1)
     application.add_handler(CallbackQueryHandler(live_admin_publish_callback, pattern=r"^adm:quiz$"), group=-1)
     application.add_handler(CommandHandler("help", enhanced_help_command), group=-1)
     application.add_handler(CallbackQueryHandler(enhanced_admin_help_callback, pattern=r"^adm:help$"), group=-1)
@@ -1381,4 +1382,48 @@ async def enhanced_admin_help_callback(
         [InlineKeyboardButton("📈 الإحصائيات", callback_data="adm:stats")],
         [InlineKeyboardButton("🏠 الرئيسية", callback_data="home")],
     ]))
+    raise ApplicationHandlerStop
+
+
+async def live_admin_channels_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    if not query or not query.from_user:
+        return
+    settings = context.application.bot_data["settings"]
+    if query.from_user.id not in settings.admin_ids:
+        await query.answer("هذه اللوحة خاصة بمالك البوت.", show_alert=True)
+        raise ApplicationHandlerStop
+    await query.answer()
+    targets = await context.application.bot_data["db"].list_targets()
+    channels = [item for item in targets if item["chat_type"] == "channel"]
+    if not channels:
+        await query.edit_message_text(
+            "📣 إدارة القنوات\n━━━━━━━━━━━━━━━━━━\n"
+            "لا توجد قنوات مسجلة بعد.\n"
+            "أضف البوت مشرفاً مع صلاحية النشر، ثم استخدم /addtarget @channel.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("↩️ مركز المالك", callback_data="adm:help")]
+            ]),
+        )
+        raise ApplicationHandlerStop
+    rows = []
+    for channel in channels[:40]:
+        rows.append([
+            InlineKeyboardButton(
+                "📣 " + (channel["title"] or str(channel["chat_id"]))[:52],
+                callback_data=f"community:target:refresh:{channel['chat_id']}",
+            )
+        ])
+    rows.extend([
+        [InlineKeyboardButton("📈 إحصائيات النظام", callback_data="adm:stats")],
+        [InlineKeyboardButton("↩️ مركز المالك", callback_data="adm:help")],
+    ])
+    await query.edit_message_text(
+        "📣 قنوات أَثَر المسجلة\n━━━━━━━━━━━━━━━━━━\n"
+        "اختر قناة لفتح لوحة النشر اليدوي والتلقائي. "
+        "لكل قناة أوقات وإعدادات مستقلة.",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
     raise ApplicationHandlerStop
