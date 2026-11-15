@@ -202,8 +202,9 @@ def _panel_text(settings: dict[str, Any]) -> str:
         f"☀️ ذكر الصباح: {state(settings['morning_enabled'])} · {settings['morning_time']}\n"
         f"🌙 ذكر المساء: {state(settings['evening_enabled'])} · {settings['evening_time']}\n"
         f"🎯 سؤال اليوم: {state(settings['quiz_enabled'])} · {settings['quiz_time']}\n"
+        f"📜 حديث اليوم: {state(settings['hadith_enabled'])} · {settings['hadith_time']}\n"
         f"👋 ترحيب الأعضاء: {state(settings['welcome_enabled'])}\n\n"
-        "تغيير المواعيد: /setmorning 07:00 · /setevening 18:00 · /setquiz 20:00\n"
+        "تغيير المواعيد: /setmorning 07:00 · /setevening 18:00 · /setquiz 20:00 · /sethadith 14:00\n"
         "التوقيت الافتراضي: الجزائر. النشر التلقائي متوقف حتى تفعّله بنفسك."
     )
 
@@ -232,18 +233,26 @@ def _panel_keyboard(settings: dict[str, Any]) -> InlineKeyboardMarkup:
                 style="success" if settings["quiz_enabled"] else None,
             ),
             InlineKeyboardButton(
+                label("حديث اليوم", settings["hadith_enabled"]),
+                callback_data="community:toggle:hadith",
+                style="success" if settings["hadith_enabled"] else None,
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 label("ترحيب الأعضاء", settings["welcome_enabled"]),
                 callback_data="community:toggle:welcome",
                 style="success" if settings["welcome_enabled"] else None,
             ),
+            InlineKeyboardButton("📊 إحصائيات المجموعة", callback_data="community:stats"),
         ],
         [
-            InlineKeyboardButton("📿 انشر ذكر الآن", callback_data="community:post:morning"),
+            InlineKeyboardButton("📿 انشر ذكر صباح", callback_data="community:post:morning"),
             InlineKeyboardButton("🌙 انشر ذكر مساء", callback_data="community:post:evening"),
         ],
         [
-            InlineKeyboardButton("🎯 انشر سؤالاً الآن", callback_data="community:post:quiz", style="primary"),
-            InlineKeyboardButton("📊 إحصائيات المجموعة", callback_data="community:stats"),
+            InlineKeyboardButton("📜 انشر حديثاً", callback_data="community:post:hadith"),
+            InlineKeyboardButton("🎯 انشر سؤالاً", callback_data="community:post:quiz", style="primary"),
         ],
         [
             InlineKeyboardButton("🎮 ساحة الألعاب", callback_data="game", style="success"),
@@ -263,8 +272,9 @@ def _channel_panel_text(settings: dict[str, Any]) -> str:
         f"🌍 التوقيت: {settings['timezone']}\n\n"
         f"☀️ ذكر الصباح: {state(settings['morning_enabled'])} · {settings['morning_time']}\n"
         f"🌙 ذكر المساء: {state(settings['evening_enabled'])} · {settings['evening_time']}\n"
-        f"🎯 سؤال اليوم: {state(settings['quiz_enabled'])} · {settings['quiz_time']}\n\n"
-        "تغيير الموعد: /setchanneltime @channel morning 07:00\n"
+        f"🎯 سؤال اليوم: {state(settings['quiz_enabled'])} · {settings['quiz_time']}\n"
+        f"📜 حديث اليوم: {state(settings['hadith_enabled'])} · {settings['hadith_time']}\n\n"
+        "تغيير الموعد: /setchanneltime @channel morning 07:00 أو hadith 14:00\n"
         "التوقيت الافتراضي: الجزائر. التلقائي متوقف حتى تفعّله."
     )
 
@@ -285,15 +295,19 @@ def _channel_panel_keyboard(
             button("ذكر الصباح", "morning_enabled", "morning"),
             button("ذكر المساء", "evening_enabled", "evening"),
         ],
-        [button("سؤال اليوم", "quiz_enabled", "quiz")],
         [
-            InlineKeyboardButton("📿 انشر ذكر الآن", callback_data=f"community:target:post:morning:{chat_id}"),
+            button("سؤال اليوم", "quiz_enabled", "quiz"),
+            button("حديث اليوم", "hadith_enabled", "hadith"),
+        ],
+        [
+            InlineKeyboardButton("📿 انشر ذكر صباح", callback_data=f"community:target:post:morning:{chat_id}"),
             InlineKeyboardButton("🌙 انشر ذكر مساء", callback_data=f"community:target:post:evening:{chat_id}"),
         ],
         [
+            InlineKeyboardButton("📜 انشر حديثاً", callback_data=f"community:target:post:hadith:{chat_id}"),
             InlineKeyboardButton("🎯 انشر سؤالاً", callback_data=f"community:target:post:quiz:{chat_id}", style="primary"),
-            InlineKeyboardButton("📊 إحصائيات", callback_data=f"community:target:stats:{chat_id}"),
         ],
+        [InlineKeyboardButton("📊 إحصائيات", callback_data=f"community:target:stats:{chat_id}")],
         [InlineKeyboardButton("🔄 تحديث", callback_data=f"community:target:refresh:{chat_id}")],
     ])
 
