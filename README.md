@@ -7,8 +7,8 @@ An Arabic-first Islamic companion for Telegram: source-aware adhkar, interactive
 ### Islamic learning and games
 
 - 100 question records across seven topics: Qur'an, Prophetic biography, Hadith, Prophets, worship, Companions, and manners.
-- Questions include an explanation and a source reference.
-- Private multiple-choice questions by topic.
+- Each question includes an explanation and a source reference.
+- Private multiple-choice questions, selectable by topic.
 - True/False quiz polls with real Telegram quiz voting and stored answer keys.
 - Live group championships with 1–10 rounds, one answer per player per round, a visual timer, participant counts, speed points, explanations, and a final leaderboard.
 - Rapid-fire championships use 12 seconds per round; normal championships use 25 seconds.
@@ -18,25 +18,26 @@ An Arabic-first Islamic companion for Telegram: source-aware adhkar, interactive
 ### Group control center
 
 Group administrators can use /groupadmin inside their own group to:
-- Enable or disable morning adhkar, evening adhkar, daily quiz, and new-member welcome messages.
-- Publish a dhikr or quiz immediately using inline controls.
-- Set separate posting times using /setmorning, /setevening, and /setquiz.
-- Review group-only publishing statistics.
-- Use /groupstats to view delivery totals.
+- Enable or disable morning adhkar, evening adhkar, daily Hadith, daily quiz, and new-member welcome messages.
+- Publish any of the four content types immediately using inline controls.
+- Set independent posting times using /setmorning, /setevening, /sethadith, and /setquiz.
+- Review group-only publishing statistics with /groupstats.
+- Use Africa/Algiers time by default.
 
-Schedules are disabled by default, independently stored for each group, and use Africa/Algiers time by default. Schedules are restored after a normal service restart and paused when the bot is removed from a group.
+Schedules are disabled by default, independently stored for each group, restored after a normal service restart, and paused when the bot is removed from a group.
 
 ### Channel control center
 
 The bot owner can use /channeladmin @channel in private after registering the channel. The bot must be an administrator with permission to post messages.
 
-Each channel has its own:
+Each registered channel has its own:
 - Morning adhkar schedule.
 - Evening adhkar schedule.
+- Daily Hadith schedule.
 - Daily quiz schedule.
 - Immediate publish buttons and delivery statistics.
 
-Use /setchanneltime @channel morning 07:00 to change a channel schedule. Channel quizzes use anonymous Telegram polls; the bot reports aggregate vote and correct-answer counts without identifying voters.
+Use /setchanneltime @channel morning 07:00 to change a channel schedule. The same command accepts evening, hadith, or quiz. Channel quizzes use anonymous Telegram polls; the bot reports aggregate vote and correct-answer counts without identifying voters.
 
 ### Owner administration
 
@@ -46,6 +47,7 @@ Use /setchanneltime @channel morning 07:00 to change a channel schedule. Channel
 - /publish copies a replied-to message to registered destinations.
 - /publishlivequiz publishes native quiz polls to registered groups and channels.
 - /channelquiz publishes a quiz poll to registered channels.
+- The owner dashboard lists registered channels and opens each channel's control panel.
 - Owner statistics include active games, quiz activity, enabled schedules, and delivery health over the last seven days.
 
 The owner is configured through ADMIN_IDS. Group administrators do not receive global owner access.
@@ -77,6 +79,7 @@ Use inside the group:
 - /groupstats — group publishing statistics
 - /setmorning 07:00
 - /setevening 18:00
+- /sethadith 14:00
 - /setquiz 20:00
 
 ### Owner-only commands
